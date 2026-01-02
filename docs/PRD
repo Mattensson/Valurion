@@ -1,0 +1,384 @@
+Valurion V1
+Product Requirements Definition (PRD)
+
+Version: 1.0
+Status: verbindlich für V1
+Ziel: Umsetzung in 6–8 Wochen, produktiv verkaufbar
+
+1. Produktüberblick
+1.1 Produktname
+
+Valurion – Secure Business Chatbot (V1)
+
+1.2 Produktziel
+
+Valurion V1 ist ein mandantenfähiger, sicherer Business-Chatbot zur strukturierten Entscheidungsunterstützung in Vertrieb & Einkauf.
+
+Der Fokus liegt auf:
+
+Governance
+
+Kostenkontrolle
+
+reproduzierbaren Business-Outputs
+nicht auf Kreativität oder Automatisierung.
+
+2. Zielgruppe & Nutzungskontext
+2.1 Zielkunden
+
+KMU bis ca. 1 Mrd. € Umsatz
+
+Funktionen:
+
+Einkauf
+
+Vertrieb
+
+Management
+
+Hohe Entscheidungsdichte, geringe Zeit
+
+2.2 Typische Nutzung
+
+Angebotsbewertung
+
+RFQ-Vergleich
+
+Entscheidungsnotizen
+
+Management-Zusammenfassungen
+
+3. Nicht-Ziele (explizit)
+
+Valurion V1 ist nicht:
+
+eine allgemeine Wissensdatenbank
+
+ein autonomer Agent
+
+ein Workflow-Automatisierungstool
+
+ein vollwertiges SaaS-Ökosystem
+
+ein Infrastruktur-Produkt
+
+4. Systemarchitektur (V1)
+4.1 Entwicklungs- & Betriebsumgebung
+
+Entwicklung
+
+IDE / Google Antigravity
+
+Localhost-first Entwicklung
+
+Docker-basierte Services
+
+Deployment
+
+Docker Deployment
+
+Hosting: Hetzner Cloud
+
+Trennung:
+
+App Layer
+
+API Layer
+
+Persistence Layer
+
+4.2 KI-Modell-Anbindung
+
+Aktiv in V1
+
+OpenAI API
+
+Google Gemini API
+
+Architektonische Vorgabe
+
+Abstraktionslayer für LLMs
+
+Modellwahl pro Anfrage möglich
+
+Einheitliches Prompt-Interface
+
+Nicht aktiv, aber vorbereitet
+
+Claude
+
+Mistral
+
+Grok
+
+→ Keine Hardcodings auf Modellebene.
+
+5. Sicherheits- & Datenschutzanforderungen
+5.1 Mandantenfähigkeit
+
+Strikte Mandanten-Trennung auf:
+
+Datenbank-Ebene
+
+File Storage
+
+Prompt Context
+
+Kein Mandanten-übergreifender Zugriff
+
+5.2 Datenschutz
+
+Keine Nutzung von Public Web UIs
+
+API-Nutzung ohne Training auf Kundendaten
+
+Löschbarkeit aller Kundendaten
+
+5.3 Logging & Audit
+
+Pro Anfrage:
+
+User-ID
+
+Mandanten-ID
+
+Zeitstempel
+
+Use Case
+
+Modell
+
+Token-Verbrauch
+
+Logs revisionssicher speicherbar
+
+6. Benutzer- & Rollenmodell
+6.1 User-Rollen (V1)
+
+User
+
+Nutzung Chat & Use Cases
+
+Dokumente hochladen
+
+Ergebnisse exportieren
+
+Power User
+
+Auswahl Use Cases
+
+Modellwahl (innerhalb Limits)
+
+RAG-Dokumente verwalten
+
+Admin
+
+Userverwaltung
+
+Budget- & Token-Limits
+
+Rollenvergabe
+
+Mandanten-Settings
+
+7. Produktfunktionen (Core)
+7.1 Business Chatbot (Pflicht)
+
+Funktional
+
+Chat-Interface (Web)
+
+Wechsel zwischen:
+
+Freier Chat
+
+Use-Case-Modus
+
+Konfigurierbare Systemprompts je Use Case
+
+KI-Kontrolle
+
+Temperatur:
+
+global oder Use-Case-spezifisch
+
+begrenzt (keine kreativen Modi)
+
+Max Tokens pro Anfrage
+
+Timeout & Fallback-Handling
+
+7.2 Dokumentenverarbeitung
+
+Upload:
+
+PDF
+
+Textformate
+
+Größenlimit (konfigurierbar)
+
+Temporäre Speicherung (Use Case bezogen)
+
+8. Use-Case-Scope V1 (verbindlich)
+UC1 – Angebotsanalyse
+
+Input
+
+1 Angebot (Dokument oder Text)
+
+Output
+
+Strukturierte Analyse:
+
+Preis
+
+Konditionen
+
+Risiken
+
+Auffälligkeiten
+
+Zusammenfassung für Entscheidung
+
+UC2 – RFQ-/Angebotsvergleich
+
+Input
+
+2–5 Angebote
+
+Output
+
+Vergleichsmatrix
+
+Stärken / Schwächen
+
+Klare Empfehlung
+
+UC3 – Go/No-Go / Entscheidungsnotiz
+
+Input
+
+Kontextbeschreibung
+
+Dokumente optional
+
+Output
+
+Management-Zusammenfassung
+
+Pro / Contra
+
+Empfehlung + Unsicherheiten
+
+UC4 – Protokollierung & Zusammenfassung
+
+Input
+
+Meeting-Notizen
+
+Freitext oder Dokument
+
+Output
+
+Strukturierte Zusammenfassung
+
+Entscheidungs- & Aufgabenpunkte
+
+9. RAG (Retrieval Augmented Generation) – V1 Minimal
+9.1 Funktionalität
+
+Upload ausgewählter Dokumente
+
+Manuelle Auswahl je Anfrage
+
+Quellenangabe im Output
+
+9.2 Einschränkungen
+
+Keine automatische Vollindexierung
+
+Keine kontinuierliche Synchronisation
+
+Kein „Chat with all company data“
+
+10. UI / UX Anforderungen
+10.1 UI
+
+Web-basiert
+
+Klarer Moduswechsel:
+
+Chat
+
+Use Case
+
+Ergebnisdarstellung strukturiert
+
+10.2 Export
+
+Copy to Clipboard
+
+PDF-Export (manuell ausgelöst)
+
+11. Abrechnung & Kostenkontrolle
+11.1 Kostenmodelle
+
+Fixe monatliche Basis pro Mandant
+
+Variable Kosten:
+
+Tokenverbrauch
+
+Use-Case-Ausführungen
+
+11.2 Anforderungen
+
+Transparente Verbrauchsanzeige
+
+Monatsaggregation
+
+Exportierbare Abrechnungsdaten
+
+12. Nicht enthalten in V1 (explizit)
+
+API für Drittsysteme
+
+Workflow-Automatisierung
+
+Multi-Agenten-Systeme
+
+White-Labeling
+
+Mobile App
+
+Self-Service Billing
+
+13. Qualitätsanforderungen
+
+Antwortzeit < akzeptabler Chat-Latenz
+
+Fehlertoleranz bei API-Ausfällen
+
+Sauberes Fallback-Verhalten
+
+Verständliche Fehlermeldungen (Business-tauglich)
+
+14. Erfolgskriterien V1
+
+Valurion V1 gilt als erfolgreich, wenn:
+
+Kunden reale Entscheidungen damit treffen
+
+Kosten transparent erklärbar sind
+
+Datenschutzdiskussionen verkaufsfördernd wirken
+
+Use Cases reproduzierbar Nutzen liefern
+
+15. Strategische Leitplanke
+
+Valurion V1 optimiert Entscheidungen – nicht Prozesse.
+Alles, was davon ablenkt, gehört nicht in V1.
+
+Nächster sinnvoller Schritt (aus PRD-Sicht)
