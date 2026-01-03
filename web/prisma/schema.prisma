@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// Models
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  auditLogs AuditLog[]
+  documents Document[]
+  chats     Chat[]
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  firstName     String?
+  lastName      String?
+  jobTitle      String?
+  company       String?
+  avatarUrl     String?  // URL to stored image
+  passwordHash  String
+  role          UserRole @default(USER)
+  
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  auditLogs     AuditLog[]
+  documents     Document[]
+  chats         Chat[]
+  transcriptions Transcription[]
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  
+  action      String   // e.g. "UC1_ANALYSIS", "LOGIN"
+  modelUsed   String?  // e.g. "gpt-4", "gemini-pro"
+  tokenCount  Int?
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  timestamp   DateTime @default(now())
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  filename    String
+  fileSize    Int
+  mimeType    String
+  
+  storagePath String   // Path in the file system or object storage
+  
+  // Optional: Simple text extraction storage for V1
+  parsedContent String?  @db.Text 
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+model Chat {
+  id        String   @id @default(uuid())
+  title     String
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  messages  Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  role      String   // "user" or "assistant" or "system"
+
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+enum TranscriptionSource {
+  UPLOAD
+  RECORDING
+}
+
+model Transcription {
+  id        String              @id @default(uuid())
+  text      String              @db.Text
+  title     String?
+  source    TranscriptionSource
+  
+  userId    String
+  user      User                @relation(fields: [userId], references: [id])
+  
+  createdAt DateTime            @default(now())
+}
+
+model AIModelConfig {
+  id        String   @id @default(uuid())
+  provider  String   // "OpenAI" or "Gemini"
+  mode      String   // "fast" or "thinking"
+  modelId   String   // e.g. "gpt-3.5-turbo"
+  
+  updatedAt DateTime @updatedAt
+  
+  @@unique([provider, mode]) 
+}

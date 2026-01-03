@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   web:
-    build: 
+    build:
       context: ./web
       dockerfile: Dockerfile
     ports:
@@ -12,6 +12,7 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
+      - DATABASE_URL=postgresql://valurion:valurion_password@db:5432/valurion_db
     command: npm run dev
 
   db:

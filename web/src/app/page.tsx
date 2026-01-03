@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 
 export default function Home() {
@@ -8,17 +9,27 @@ export default function Home() {
       flexDirection: 'column',
       justifyContent: 'center',
       alignItems: 'center',
-      background: 'radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0a0a0a 100%)'
+      // background: 'radial-gradient(circle at 50% 10%, #f0f9ff 0%, #ffffff 100%)' // Optional light gradient
     }}>
       <div className="glass-panel" style={{ padding: '4rem', borderRadius: '1rem', textAlign: 'center', maxWidth: '600px', width: '100%' }}>
+
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+          <Image
+            src="/img/logo-icon.png"
+            alt="Valurion Logo"
+            width={80}
+            height={80}
+            style={{ width: 'auto', height: '80px' }}
+            priority
+          />
+        </div>
+
         <h1 style={{
           fontSize: '3.5rem',
           fontWeight: '800',
           marginBottom: '1rem',
-          background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          letterSpacing: '-0.02em'
+          color: 'hsl(var(--foreground))',
+          letterSpacing: '-0.02em',
         }}>
           Valurion
         </h1>
@@ -26,7 +37,9 @@ export default function Home() {
           Der sichere Business-Chatbot für<br />strukturiertes Entscheiden.
         </p>
         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-          <button className="btn btn-primary" style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>Login</button>
+          <Link href="/login">
+            <button className="btn btn-primary" style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>Login</button>
+          </Link>
           <button className="btn btn-ghost" style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>Demo anfragen</button>
         </div>
       </div>
