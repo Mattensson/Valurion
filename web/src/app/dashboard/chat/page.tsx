@@ -4,12 +4,35 @@ import { useState, useEffect } from 'react';
 import { createChat, getChats, getChat, saveMessage, deleteChat } from '@/app/actions/chat';
 
 const renderContent = (content: string) => {
-    const parts = content.split(/(\*\*.*?\*\*)/g);
+    // Split by markdown images and bold text
+    const parts = content.split(/(!\[.*?\]\(.*?\))|(\*\*.*?\*\*)/g).filter(p => p !== undefined && p !== "");
+
     return parts.map((part, index) => {
+        if (part.startsWith('![') && part.includes('](') && part.endsWith(')')) {
+            const match = part.match(/!\[(.*?)\]\((.*?)\)/);
+            if (match) {
+                return (
+                    <div key={index} style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                        <img
+                            src={match[2]}
+                            alt={match[1] || 'Uploaded Image'}
+                            style={{
+                                maxWidth: '100%',
+                                maxHeight: '400px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border)'
+                            }}
+                        />
+                    </div>
+                );
+            }
+        }
+
         if (part.startsWith('**') && part.endsWith('**')) {
             return <strong key={index}>{part.slice(2, -2)}</strong>;
         }
-        return part;
+
+        return <span key={index}>{part}</span>;
     });
 };
 
@@ -27,6 +50,8 @@ export default function ChatPage() {
     type Message = { role: 'user' | 'assistant'; content: string };
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [attachments, setAttachments] = useState<{ file: File; preview: string }[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
 
     // Saved Chats
     type ChatItem = { id: string; title: string; updatedAt: Date; messages: any[] };
@@ -92,10 +117,73 @@ export default function ChatPage() {
         }
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData.items;
 
-        const userMessage: Message = { role: 'user', content: input };
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const blob = items[i].getAsFile();
+                if (blob) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        if (event.target?.result) {
+                            setAttachments(prev => [...prev, {
+                                file: blob,
+                                preview: event.target!.result as string
+                            }]);
+                        }
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }
+        }
+    };
+
+    const removeAttachment = (index: number) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSend = async () => {
+        if ((!input.trim() && attachments.length === 0) || isLoading || isUploading) return;
+
+        let finalContent = input;
+        setIsUploading(true);
+
+        try {
+            // Upload attachments if any
+            if (attachments.length > 0) {
+                const uploadPromises = attachments.map(async (att) => {
+                    const formData = new FormData();
+                    formData.append('file', att.file);
+
+                    const res = await fetch('/api/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!res.ok) throw new Error('Upload failed');
+                    const data = await res.json();
+                    return `![Image](${data.url})`;
+                });
+
+                const uploadedUrls = await Promise.all(uploadPromises);
+                if (finalContent.trim()) finalContent += '\n\n';
+                finalContent += uploadedUrls.join('\n');
+
+                // Clear attachments after successful upload preparation
+                setAttachments([]);
+            }
+        } catch (error) {
+            console.error('Failed to upload attachments', error);
+            alert('Fehler beim Hochladen der Bilder.');
+            setIsUploading(false);
+            return;
+        } finally {
+            setIsUploading(false);
+        }
+
+        const userMessage: Message = { role: 'user', content: finalContent };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
@@ -104,7 +192,7 @@ export default function ChatPage() {
             // Create new chat if needed
             let chatId = currentChatId;
             if (!chatId) {
-                const newChat = await createChat(input.substring(0, 50));
+                const newChat = await createChat(finalContent.substring(0, 50) || 'Image Chat');
                 chatId = newChat.id;
                 setCurrentChatId(chatId);
                 await loadChats(); // Refresh sidebar
@@ -479,10 +567,57 @@ export default function ChatPage() {
                 <div style={{
                     padding: '0 1rem 2rem',
                     display: 'flex',
-                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    alignItems: 'center',
                     borderTop: '1px solid var(--border)',
                     paddingTop: '1rem'
                 }}>
+                    <div style={{
+                        width: '100%',
+                        maxWidth: '768px',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem',
+                        marginBottom: attachments.length > 0 ? '0.5rem' : '0'
+                    }}>
+                        {attachments.map((att, index) => (
+                            <div key={index} style={{ position: 'relative', width: '64px', height: '64px' }}>
+                                <img
+                                    src={att.preview}
+                                    alt="Preview"
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        borderRadius: '0.5rem',
+                                        border: '1px solid var(--border)'
+                                    }}
+                                />
+                                <button
+                                    onClick={() => removeAttachment(index)}
+                                    style={{
+                                        position: 'absolute',
+                                        top: '-6px',
+                                        right: '-6px',
+                                        background: 'rgba(0,0,0,0.6)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '50%',
+                                        width: '18px',
+                                        height: '18px',
+                                        fontSize: '12px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
                     <div style={{
                         width: '100%',
                         maxWidth: '768px',
@@ -493,8 +628,9 @@ export default function ChatPage() {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            onPaste={handlePaste}
                             placeholder="Nachricht an Valurion AI..."
-                            disabled={isLoading}
+                            disabled={isLoading || isUploading}
                             style={{
                                 width: '100%',
                                 padding: '1rem 3rem 1rem 1.5rem',
@@ -509,7 +645,7 @@ export default function ChatPage() {
                         />
                         <button
                             onClick={handleSend}
-                            disabled={!input.trim() || isLoading}
+                            disabled={(!input.trim() && attachments.length === 0) || isLoading || isUploading}
                             style={{
                                 position: 'absolute',
                                 right: '0.75rem',

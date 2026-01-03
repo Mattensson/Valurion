@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { getAIConfigurations, updateAIConfiguration, AIConfigUpdate, getAllUsers, createUser, CreateUserData, updateUserAsAdmin, UpdateUserData } from '@/app/actions/admin';
+import { getAIConfigurations, updateAIConfiguration, AIConfigUpdate, getAllUsers, createUser, CreateUserData, updateUserAsAdmin, UpdateUserData, deleteUser } from '@/app/actions/admin';
 
 type ConfigRow = {
     provider: string;
@@ -46,6 +46,10 @@ export default function AIConfigPage() {
 
     const [userSearchQuery, setUserSearchQuery] = useState('');
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+    // Delete User State
+    const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+    const [userToDeleteId, setUserToDeleteId] = useState<string | null>(null);
 
     useEffect(() => {
         loadConfigs();
@@ -222,6 +226,31 @@ export default function AIConfigPage() {
             showNotification('Fehler beim Speichern', 'error', event);
         } finally {
             setIsCreatingUser(false);
+        }
+    };
+
+    const promptDeleteUser = (userId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        setUserToDeleteId(userId);
+        setShowDeleteConfirmModal(true);
+    };
+
+    const confirmDeleteUser = async () => {
+        if (!userToDeleteId) return;
+
+        try {
+            const result = await deleteUser(userToDeleteId);
+            if (result.success) {
+                showNotification('Benutzer erfolgreich gelöscht', 'success');
+                await loadUsers();
+            } else {
+                showNotification(result.error || 'Fehler beim Löschen', 'error');
+            }
+        } catch (error) {
+            showNotification('Fehler beim Löschen des Benutzers', 'error');
+        } finally {
+            setShowDeleteConfirmModal(false);
+            setUserToDeleteId(null);
         }
     };
 
@@ -458,6 +487,7 @@ export default function AIConfigPage() {
                                     <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600 }}>Firma</th>
                                     <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600 }}>Rolle</th>
                                     <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600 }}>Erstellt am</th>
+                                    <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600 }}>Aktionen</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -511,6 +541,23 @@ export default function AIConfigPage() {
                                                 month: '2-digit',
                                                 day: '2-digit'
                                             })}
+                                        </td>
+                                        <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                                            <button
+                                                className="btn btn-ghost"
+                                                onClick={(e) => promptDeleteUser(user.id, e)}
+                                                style={{
+                                                    color: '#ef4444',
+                                                    padding: '0.5rem',
+                                                    borderRadius: '0.5rem',
+                                                    opacity: 0.7
+                                                }}
+                                                title="Benutzer löschen"
+                                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                                            >
+                                                🗑️
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}
@@ -746,6 +793,62 @@ export default function AIConfigPage() {
                         >
                             OK
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirmModal && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.5)',
+                        backdropFilter: 'blur(4px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}
+                    onClick={() => setShowDeleteConfirmModal(false)}
+                >
+                    <div
+                        className="glass-panel"
+                        style={{
+                            padding: '2rem',
+                            borderRadius: '1rem',
+                            maxWidth: '400px',
+                            width: '90%',
+                            animation: 'fadeIn 0.2s ease-out'
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem', color: '#ef4444' }}>
+                            Benutzer löschen?
+                        </h3>
+                        <p style={{ color: 'hsl(var(--muted-foreground))', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+                            Möchten Sie diesen Benutzer wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden. Alle Daten des Benutzers werden unwiderruflich entfernt.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button
+                                className="btn btn-ghost"
+                                onClick={() => setShowDeleteConfirmModal(false)}
+                            >
+                                Abbrechen
+                            </button>
+                            <button
+                                className="btn"
+                                onClick={confirmDeleteUser}
+                                style={{
+                                    background: '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    fontWeight: 600
+                                }}
+                            >
+                                Löschen bestätigen
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

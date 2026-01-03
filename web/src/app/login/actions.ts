@@ -20,7 +20,7 @@ export type LoginState = {
 };
 
 export async function loginAction(prevState: LoginState, formData: FormData): Promise<LoginState> {
-    const email = formData.get('email') as string;
+    const email = (formData.get('email') as string).toLowerCase().trim();
     const password = formData.get('password') as string;
 
     // Validate form data
