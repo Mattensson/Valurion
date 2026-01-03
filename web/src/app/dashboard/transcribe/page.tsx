@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { transcribeAudio, getTranscripts, deleteTranscript } from '@/app/actions/transcribe';
 
 const renderContent = (content: string) => {
@@ -36,6 +37,24 @@ export default function TranscribePage() {
     const chunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const router = useRouter();
+
+    const handleCreateProtocol = () => {
+        if (!transcription) return;
+
+        // Find the full transcript object from the list if possible to get ID/Title
+        const currentTranscriptObj = transcripts.find(t => t.id === selectedTranscriptId);
+
+        const protocolData = {
+            id: selectedTranscriptId || 'new',
+            title: currentTranscriptObj?.title || 'Neues Protokoll',
+            content: transcription,
+            date: new Date().toISOString()
+        };
+
+        sessionStorage.setItem('valurion_protocol_draft', JSON.stringify(protocolData));
+        router.push('/dashboard/protocol?create=true');
+    };
 
     useEffect(() => {
         loadTranscripts();
@@ -92,8 +111,8 @@ export default function TranscribePage() {
     };
 
     const validateAndSetFile = (file: File) => {
-        if (file.size > 25 * 1024 * 1024) {
-            setError('Datei ist zu groß (Max 25MB)');
+        if (file.size > 100 * 1024 * 1024) {
+            setError('Datei ist zu groß (Max 100MB)');
             return;
         }
         setFile(file);
@@ -101,6 +120,10 @@ export default function TranscribePage() {
         // We don't clear transcription immediately to allow comparing, but maybe we should?
         // Let's keep previous output until new one is generated.
     };
+
+    // ... (skipping unchanged parts)
+
+
 
     const startRecording = async () => {
         try {
@@ -221,21 +244,31 @@ export default function TranscribePage() {
                     {/* Input Card */}
                     <div className="glass-panel" style={{ padding: '1.5rem' }}>
                         {/* Tabs */}
-                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
                             <button
                                 onClick={() => { setActiveTab('upload'); setFile(null); setError(''); }}
                                 style={{
-                                    padding: '0.5rem 0',
-                                    paddingBottom: '0.75rem',
+                                    padding: '0.75rem 1.5rem',
                                     flex: 1,
                                     color: activeTab === 'upload' ? '#fff' : 'hsl(var(--muted-foreground))',
-                                    fontWeight: 500,
-                                    background: 'none',
-                                    border: 'none',
-                                    borderBottom: activeTab === 'upload' ? '2px solid #01b4d8' : '2px solid transparent',
+                                    fontWeight: 600,
+                                    background: activeTab === 'upload' ? '#01b4d8' : 'rgba(255,255,255,0.05)',
+                                    border: activeTab === 'upload' ? '1px solid #01b4d8' : '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '0.5rem',
                                     cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                    textAlign: 'center'
+                                    transition: 'all 0.3s ease',
+                                    textAlign: 'center',
+                                    boxShadow: activeTab === 'upload' ? '0 4px 12px rgba(1, 180, 216, 0.3)' : 'none'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (activeTab !== 'upload') {
+                                        e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (activeTab !== 'upload') {
+                                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                    }
                                 }}
                             >
                                 Upload
@@ -243,17 +276,27 @@ export default function TranscribePage() {
                             <button
                                 onClick={() => { setActiveTab('record'); setFile(null); setError(''); }}
                                 style={{
-                                    padding: '0.5rem 0',
-                                    paddingBottom: '0.75rem',
+                                    padding: '0.75rem 1.5rem',
                                     flex: 1,
                                     color: activeTab === 'record' ? '#fff' : 'hsl(var(--muted-foreground))',
-                                    fontWeight: 500,
-                                    background: 'none',
-                                    border: 'none',
-                                    borderBottom: activeTab === 'record' ? '2px solid #01b4d8' : '2px solid transparent',
+                                    fontWeight: 600,
+                                    background: activeTab === 'record' ? '#01b4d8' : 'rgba(255,255,255,0.05)',
+                                    border: activeTab === 'record' ? '1px solid #01b4d8' : '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '0.5rem',
                                     cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                    textAlign: 'center'
+                                    transition: 'all 0.3s ease',
+                                    textAlign: 'center',
+                                    boxShadow: activeTab === 'record' ? '0 4px 12px rgba(1, 180, 216, 0.3)' : 'none'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (activeTab !== 'record') {
+                                        e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (activeTab !== 'record') {
+                                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                    }
                                 }}
                             >
                                 Aufnahme
@@ -268,49 +311,281 @@ export default function TranscribePage() {
                                 onDrop={handleDrop}
                                 style={{
                                     border: `2px dashed ${dragActive ? '#01b4d8' : 'rgba(255,255,255,0.2)'}`,
-                                    borderRadius: '0.75rem',
-                                    padding: '2rem 1rem',
+                                    borderRadius: '1rem',
+                                    padding: '3rem 1.5rem',
                                     textAlign: 'center',
-                                    background: dragActive ? 'rgba(1, 180, 216, 0.05)' : 'transparent',
+                                    background: dragActive
+                                        ? 'linear-gradient(135deg, rgba(1, 180, 216, 0.1), rgba(1, 180, 216, 0.05))'
+                                        : 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))',
                                     cursor: 'pointer',
-                                    transition: 'all 0.2s'
+                                    transition: 'all 0.3s ease',
+                                    transform: dragActive ? 'scale(1.02)' : 'scale(1)',
+                                    boxShadow: dragActive ? '0 8px 32px rgba(1, 180, 216, 0.2)' : 'none',
+                                    minHeight: '220px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '1rem'
                                 }}
                                 onClick={() => fileInputRef.current?.click()}
                             >
                                 <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleChange} accept="audio/*" />
-                                <div style={{ fontSize: '2rem', marginBottom: '0.5rem', opacity: 0.7 }}>📁</div>
-                                <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>Datei hierher ziehen</div>
+
+                                {/* Upload Icon with Animation */}
+                                <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    borderRadius: '50%',
+                                    background: dragActive
+                                        ? 'linear-gradient(135deg, #01b4d8, #0891b2)'
+                                        : 'rgba(1, 180, 216, 0.1)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.3s ease',
+                                    boxShadow: dragActive ? '0 0 30px rgba(1, 180, 216, 0.4)' : '0 0 0 rgba(1, 180, 216, 0.2)'
+                                }}>
+                                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={dragActive ? 'white' : '#01b4d8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="17 8 12 3 7 8" />
+                                        <line x1="12" y1="3" x2="12" y2="15" />
+                                    </svg>
+                                </div>
+
+                                {/* Main Text */}
+                                <div>
+                                    <div style={{
+                                        fontSize: '1.1rem',
+                                        fontWeight: 600,
+                                        marginBottom: '0.5rem',
+                                        color: dragActive ? '#01b4d8' : 'white'
+                                    }}>
+                                        {dragActive ? 'Datei hier ablegen' : 'Datei hierher ziehen'}
+                                    </div>
+                                    <div style={{
+                                        fontSize: '0.875rem',
+                                        color: 'hsl(var(--muted-foreground))',
+                                        marginBottom: '0.75rem'
+                                    }}>
+                                        oder klicken zum Auswählen
+                                    </div>
+                                </div>
+
+                                {/* Supported Formats */}
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '0.5rem',
+                                    flexWrap: 'wrap',
+                                    justifyContent: 'center',
+                                    marginTop: '0.5rem'
+                                }}>
+                                    {['MP3', 'WAV', 'M4A', 'OGG'].map(format => (
+                                        <span key={format} style={{
+                                            padding: '0.25rem 0.75rem',
+                                            background: 'rgba(1, 180, 216, 0.1)',
+                                            border: '1px solid rgba(1, 180, 216, 0.2)',
+                                            borderRadius: '1rem',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 500,
+                                            color: '#01b4d8'
+                                        }}>
+                                            {format}
+                                        </span>
+                                    ))}
+                                </div>
+
+                                {/* Max Size Info */}
+                                <div style={{
+                                    fontSize: '0.75rem',
+                                    color: 'hsl(var(--muted-foreground))',
+                                    marginTop: '0.25rem'
+                                }}>
+                                    Max. 100 MB
+                                </div>
                             </div>
                         )}
 
                         {activeTab === 'record' && !file && (
-                            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                            <div style={{
+                                textAlign: 'center',
+                                padding: '3rem 1.5rem',
+                                minHeight: '220px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
                                 {!isRecording ? (
-                                    <button
-                                        onClick={startRecording}
-                                        style={{
-                                            width: '64px',
-                                            height: '64px',
-                                            borderRadius: '50%',
-                                            background: '#ef4444',
-                                            border: 'none',
-                                            color: 'white',
-                                            cursor: 'pointer',
-                                            boxShadow: '0 0 15px rgba(239, 68, 68, 0.3)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}
-                                    >
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                                    </button>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ef4444', marginBottom: '1rem', fontVariantNumeric: 'tabular-nums' }}>
-                                            {formatTime(recordingTime)}
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+                                        {/* Microphone Button */}
+                                        <button
+                                            onClick={startRecording}
+                                            style={{
+                                                width: '100px',
+                                                height: '100px',
+                                                borderRadius: '50%',
+                                                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                                border: 'none',
+                                                color: 'white',
+                                                cursor: 'pointer',
+                                                boxShadow: '0 8px 32px rgba(239, 68, 68, 0.3)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.3s ease',
+                                                position: 'relative'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.transform = 'scale(1.1)';
+                                                e.currentTarget.style.boxShadow = '0 12px 48px rgba(239, 68, 68, 0.5)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.transform = 'scale(1)';
+                                                e.currentTarget.style.boxShadow = '0 8px 32px rgba(239, 68, 68, 0.3)';
+                                            }}
+                                        >
+                                            {/* Pulse Animation Ring */}
+                                            <div style={{
+                                                position: 'absolute',
+                                                width: '100%',
+                                                height: '100%',
+                                                borderRadius: '50%',
+                                                border: '2px solid #ef4444',
+                                                animation: 'pulse 2s ease-in-out infinite',
+                                                opacity: 0.5
+                                            }} />
+
+                                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                                <line x1="12" y1="19" x2="12" y2="23" />
+                                                <line x1="8" y1="23" x2="16" y2="23" />
+                                            </svg>
+                                        </button>
+
+                                        {/* Instructions */}
+                                        <div>
+                                            <div style={{
+                                                fontSize: '1.1rem',
+                                                fontWeight: 600,
+                                                marginBottom: '0.5rem'
+                                            }}>
+                                                Aufnahme starten
+                                            </div>
+                                            <div style={{
+                                                fontSize: '0.875rem',
+                                                color: 'hsl(var(--muted-foreground))'
+                                            }}>
+                                                Klicken Sie auf das Mikrofon
+                                            </div>
                                         </div>
-                                        <button onClick={stopRecording} className="btn" style={{ padding: '0.5rem 1.5rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '2rem', color: 'white' }}>
-                                            Stoppen
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        gap: '2rem'
+                                    }}>
+                                        {/* Recording Indicator with Waveform */}
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: '1.5rem'
+                                        }}>
+                                            {/* Animated Recording Icon */}
+                                            <div style={{
+                                                width: '100px',
+                                                height: '100px',
+                                                borderRadius: '50%',
+                                                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                position: 'relative',
+                                                animation: 'recordingPulse 1.5s ease-in-out infinite'
+                                            }}>
+                                                {/* Outer Ring */}
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    width: '120px',
+                                                    height: '120px',
+                                                    borderRadius: '50%',
+                                                    border: '3px solid #ef4444',
+                                                    animation: 'ripple 1.5s ease-out infinite',
+                                                    opacity: 0
+                                                }} />
+
+                                                <svg width="40" height="40" viewBox="0 0 24 24" fill="white" stroke="white" strokeWidth="2">
+                                                    <circle cx="12" cy="12" r="8" />
+                                                </svg>
+                                            </div>
+
+                                            {/* Timer */}
+                                            <div style={{
+                                                fontSize: '2rem',
+                                                fontWeight: 700,
+                                                color: '#ef4444',
+                                                fontVariantNumeric: 'tabular-nums',
+                                                letterSpacing: '0.05em'
+                                            }}>
+                                                {formatTime(recordingTime)}
+                                            </div>
+
+                                            {/* Waveform Visualization */}
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '4px',
+                                                alignItems: 'center',
+                                                height: '40px'
+                                            }}>
+                                                {[...Array(5)].map((_, i) => (
+                                                    <div
+                                                        key={i}
+                                                        style={{
+                                                            width: '4px',
+                                                            background: '#ef4444',
+                                                            borderRadius: '2px',
+                                                            animation: `wave 1s ease-in-out infinite`,
+                                                            animationDelay: `${i * 0.1}s`,
+                                                            height: '20px'
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Stop Button */}
+                                        <button
+                                            onClick={stopRecording}
+                                            className="btn"
+                                            style={{
+                                                padding: '0.75rem 2rem',
+                                                background: '#ef4444',
+                                                border: 'none',
+                                                borderRadius: '2rem',
+                                                color: 'white',
+                                                fontSize: '1rem',
+                                                fontWeight: 600,
+                                                transition: 'all 0.2s ease',
+                                                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.4)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
+                                            }}
+                                        >
+                                            <span style={{ fontSize: '1.2rem' }}>⏹</span> Aufnahme beenden
                                         </button>
                                     </div>
                                 )}
@@ -420,13 +695,22 @@ export default function TranscribePage() {
                         <>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Inhalt</h2>
-                                <button
-                                    onClick={copyToClipboard}
-                                    className="btn btn-ghost"
-                                    style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                                >
-                                    📋 Kopieren
-                                </button>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button
+                                        onClick={handleCreateProtocol}
+                                        className="btn btn-primary"
+                                        style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#01b4d8', border: 'none' }}
+                                    >
+                                        📑 Protokoll erstellen
+                                    </button>
+                                    <button
+                                        onClick={copyToClipboard}
+                                        className="btn btn-ghost"
+                                        style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                    >
+                                        📋 Kopieren
+                                    </button>
+                                </div>
                             </div>
                             <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8', fontSize: '1.1rem', overflowY: 'auto', flex: 1 }}>
                                 {renderContent(transcription)}
@@ -507,6 +791,50 @@ export default function TranscribePage() {
                 }
                 ::-webkit-scrollbar-thumb:hover {
                     background: rgba(255, 255, 255, 0.2); 
+                }
+
+                /* Pulse Animation for Microphone Button */
+                @keyframes pulse {
+                    0%, 100% {
+                        transform: scale(1);
+                        opacity: 0.5;
+                    }
+                    50% {
+                        transform: scale(1.2);
+                        opacity: 0.2;
+                    }
+                }
+
+                /* Ripple Animation for Recording */
+                @keyframes ripple {
+                    0% {
+                        transform: scale(1);
+                        opacity: 0.6;
+                    }
+                    100% {
+                        transform: scale(1.5);
+                        opacity: 0;
+                    }
+                }
+
+                /* Recording Pulse */
+                @keyframes recordingPulse {
+                    0%, 100% {
+                        box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);
+                    }
+                    50% {
+                        box-shadow: 0 8px 48px rgba(239, 68, 68, 0.6);
+                    }
+                }
+
+                /* Wave Animation for Audio Bars */
+                @keyframes wave {
+                    0%, 100% {
+                        height: 20px;
+                    }
+                    50% {
+                        height: 40px;
+                    }
                 }
             `}</style>
         </div>

@@ -57,6 +57,7 @@ model User {
   chats         Chat[]
   projects      Project[]
   transcriptions Transcription[]
+  protocols     Protocol[]
 }
 
 model AuditLog {
@@ -146,6 +147,8 @@ model Transcription {
   user      User                @relation(fields: [userId], references: [id])
   
   createdAt DateTime            @default(now())
+
+  protocols Protocol[]
 }
 
 model AIModelConfig {
@@ -232,4 +235,19 @@ model CompanyStrategy {
   updatedAt       DateTime @updatedAt
   
   @@index([companyId, isActive])
+}
+
+model Protocol {
+  id              String   @id @default(uuid())
+  title           String
+  content         String   @db.Text
+  
+  transcriptionId String?
+  transcription   Transcription? @relation(fields: [transcriptionId], references: [id])
+  
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

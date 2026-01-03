@@ -41,7 +41,8 @@ export function Sidebar({ user }: SidebarProps) {
         { path: '/dashboard/chat', label: 'AI Chat', icon: '💬', svgPath: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
         { path: '/dashboard/docs', label: 'Dokumente', icon: '📁', svgPath: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z' },
         { path: '/dashboard/companies', label: 'Unternehmen', icon: '🏢', svgPath: 'M3 21h18M5 21V7l8-4 8 4v14M6 10h2M6 14h2M6 18h2M10 6v14M14 10h2M14 14h2M14 18h2' },
-        { path: '/dashboard/transcribe', label: 'Transkription', icon: '🎤', svgPath: 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.66 9 5v6c0 1.66 1.34 3 3 3z M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z' }
+        { path: '/dashboard/transcribe', label: 'Transkription', icon: '🎤', svgPath: 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.66 9 5v6c0 1.66 1.34 3 3 3z M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z' },
+        { path: '/dashboard/protocol', label: 'Protokollierung', icon: '📑', svgPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' }
     ];
 
     return (
