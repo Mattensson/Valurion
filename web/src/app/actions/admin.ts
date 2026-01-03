@@ -5,6 +5,109 @@ import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcryptjs';
 
+// --- Tenant Management ---
+
+export async function getTenants() {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    // Return all tenants with user count
+    return await prisma.tenant.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+            _count: {
+                select: { users: true }
+            }
+        }
+    });
+}
+
+export async function createTenant(name: string) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    try {
+        const tenant = await prisma.tenant.create({
+            data: { name }
+        });
+        revalidatePath('/dashboard/admin/ai-config');
+        return { success: true, tenant };
+    } catch (e) {
+        console.error("Create Tenant Error", e);
+        return { success: false, error: 'Fehler beim Erstellen' };
+    }
+}
+
+export async function updateTenant(id: string, name: string) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    try {
+        const tenant = await prisma.tenant.update({
+            where: { id },
+            data: { name }
+        });
+        revalidatePath('/dashboard/admin/ai-config');
+        return { success: true, tenant };
+    } catch (e) {
+        console.error("Update Tenant Error", e);
+        return { success: false, error: 'Fehler beim Aktualisieren' };
+    }
+}
+
+export async function deleteTenant(id: string) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    try {
+        // Prevent deleting current tenant of the user (safety check)
+        if (id === session.tenantId) {
+            return { success: false, error: 'Das eigene Unternehmen kann nicht gelöscht werden.' };
+        }
+
+        // Clean up data
+        // Delete users of tenant
+        const users = await prisma.user.findMany({ where: { tenantId: id }, select: { id: true } });
+        for (const u of users) {
+            // We can reuse deleteUser logic but simpler here:
+            // Cascading delete manually for safety
+            await prisma.auditLog.deleteMany({ where: { userId: u.id } });
+            await prisma.transcription.deleteMany({ where: { userId: u.id } });
+            await prisma.document.deleteMany({ where: { userId: u.id } });
+
+            const chats = await prisma.chat.findMany({ where: { userId: u.id }, select: { id: true } });
+            await prisma.message.deleteMany({ where: { chatId: { in: chats.map((c: { id: string }) => c.id) } } });
+            await prisma.chat.deleteMany({ where: { userId: u.id } });
+            await prisma.project.deleteMany({ where: { userId: u.id } });
+        }
+        await prisma.user.deleteMany({ where: { tenantId: id } });
+
+        // Delete Tenant resources not tied to user if any (AuditLog, Document linked to Tenant directly?)
+        // Schema: AuditLog -> Tenant, Document -> Tenant, Chat -> Tenant, Project -> Tenant
+        await prisma.auditLog.deleteMany({ where: { tenantId: id } });
+        await prisma.document.deleteMany({ where: { tenantId: id } });
+        await prisma.message.deleteMany({ where: { chat: { tenantId: id } } });
+        await prisma.chat.deleteMany({ where: { tenantId: id } });
+        await prisma.project.deleteMany({ where: { tenantId: id } });
+
+        await prisma.tenant.delete({ where: { id } });
+
+        revalidatePath('/dashboard/admin/ai-config');
+        return { success: true };
+    } catch (e) {
+        console.error("Delete Tenant Error", e);
+        return { success: false, error: 'Fehler beim Löschen' };
+    }
+}
+
 export async function getAIConfigurations() {
     const session = await getSession();
     if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
@@ -60,10 +163,11 @@ export async function getAllUsers() {
         throw new Error('Unauthorized');
     }
 
+    // For now, allow both ADMIN and SUPER_ADMIN to see all users to support cross-tenant management
+    const whereClause = {};
+
     return await prisma.user.findMany({
-        where: {
-            tenantId: session.tenantId,
-        },
+        where: whereClause,
         select: {
             id: true,
             email: true,
@@ -73,6 +177,11 @@ export async function getAllUsers() {
             company: true,
             role: true,
             createdAt: true,
+            tenant: {
+                select: {
+                    name: true
+                }
+            }
         },
         orderBy: {
             createdAt: 'desc',
@@ -87,7 +196,8 @@ export type CreateUserData = {
     jobTitle?: string;
     company?: string;
     password: string;
-    role: 'USER' | 'ADMIN';
+    role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+    tenantId?: string;
 };
 
 export async function createUser(data: CreateUserData) {
@@ -121,7 +231,8 @@ export async function createUser(data: CreateUserData) {
                 company: data.company,
                 passwordHash,
                 role: data.role,
-                tenantId: session.tenantId,
+
+                tenantId: data.tenantId || session.tenantId,
             },
         });
 
@@ -141,7 +252,8 @@ export type UpdateUserData = {
     jobTitle?: string;
     company?: string;
     password?: string;
-    role: 'USER' | 'ADMIN';
+    role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+    tenantId?: string;
 };
 
 export async function updateUserAsAdmin(data: UpdateUserData) {
@@ -159,6 +271,10 @@ export async function updateUserAsAdmin(data: UpdateUserData) {
             company: data.company,
             role: data.role,
         };
+
+        if (data.tenantId) {
+            updateData.tenantId = data.tenantId;
+        }
 
         if (data.password && data.password.trim() !== '') {
             updateData.passwordHash = await bcrypt.hash(data.password, 10);
@@ -223,7 +339,7 @@ export async function deleteUser(userId: string) {
 
         // Delete chats and their messages
         const userChats = await prisma.chat.findMany({ where: { userId }, select: { id: true } });
-        const chatIds = userChats.map(c => c.id);
+        const chatIds = userChats.map((c: { id: string }) => c.id);
         await prisma.message.deleteMany({ where: { chatId: { in: chatIds } } });
         await prisma.chat.deleteMany({ where: { userId } });
 
@@ -238,4 +354,175 @@ export async function deleteUser(userId: string) {
         console.error('Failed to delete user:', error);
         return { success: false, error: 'Fehler beim Löschen des Benutzers' };
     }
+}
+
+export async function getUsersByTenant(tenantId: string) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    return await prisma.user.findMany({
+        where: { tenantId },
+        select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            role: true,
+            createdAt: true,
+        },
+        orderBy: {
+            createdAt: 'desc',
+        },
+    });
+}
+
+export type TokenUsageReport = {
+    userId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    company: string | null;
+    totalTokens: number;
+    usageCount: number;
+    lastActive: Date | null;
+};
+
+export type TenantTokenUsageReport = {
+    tenantId: string;
+    name: string;
+    totalTokens: number;
+    usageCount: number;
+    userCount: number;
+};
+
+export async function getUserTokenUsage(month?: number, year?: number): Promise<TokenUsageReport[]> {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    const whereClause: any = {};
+    if (session.role === 'ADMIN') {
+        whereClause.tenantId = session.tenantId;
+    }
+
+    let dateFilter: any = {};
+    if (month && year) {
+        // Month is 1-12
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 1); // First day of next month
+        dateFilter = {
+            timestamp: {
+                gte: startDate,
+                lt: endDate
+            }
+        };
+    }
+
+    const users = await prisma.user.findMany({
+        where: whereClause,
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            company: true,
+            auditLogs: {
+                where: {
+                    action: 'CHAT_INTERACTION',
+                    ...dateFilter
+                },
+                select: {
+                    tokenCount: true,
+                    timestamp: true
+                }
+            }
+        }
+    });
+
+    const report: TokenUsageReport[] = users.map((user: any) => {
+        const totalTokens = user.auditLogs.reduce((sum: number, log: any) => sum + (log.tokenCount || 0), 0);
+        const usageCount = user.auditLogs.length;
+
+        let lastActive: Date | null = null;
+        if (user.auditLogs.length > 0) {
+            lastActive = user.auditLogs.reduce((latest: Date | null, current: any) => {
+                return (!latest || current.timestamp > latest) ? current.timestamp : latest;
+            }, null as Date | null);
+        }
+
+        return {
+            userId: user.id,
+            firstName: user.firstName || '',
+            lastName: user.lastName || '',
+            email: user.email,
+            company: user.company || '',
+            totalTokens,
+            usageCount,
+            lastActive
+        };
+    });
+
+    return report.sort((a, b) => b.totalTokens - a.totalTokens);
+}
+
+export async function getTenantTokenUsage(month?: number, year?: number): Promise<TenantTokenUsageReport[]> {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    let dateFilter: any = {};
+    if (month && year) {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 1);
+        dateFilter = {
+            timestamp: {
+                gte: startDate,
+                lt: endDate
+            }
+        };
+    }
+
+    // Admins only see their own tenant
+    const tenantWhere = session.role === 'ADMIN' ? { id: session.tenantId } : {};
+
+    const tenants = await prisma.tenant.findMany({
+        where: tenantWhere,
+        select: {
+            id: true,
+            name: true,
+            auditLogs: {
+                where: {
+                    action: 'CHAT_INTERACTION',
+                    ...dateFilter
+                },
+                select: {
+                    tokenCount: true
+                }
+            },
+            users: {
+                select: { id: true }
+            }
+        }
+    });
+
+    const report: TenantTokenUsageReport[] = tenants.map((tenant: any) => {
+        const totalTokens = tenant.auditLogs.reduce((sum: number, log: any) => sum + (log.tokenCount || 0), 0);
+        const usageCount = tenant.auditLogs.length;
+        const userCount = tenant.users.length;
+
+        return {
+            tenantId: tenant.id,
+            name: tenant.name,
+            totalTokens,
+            usageCount,
+            userCount
+        };
+    });
+
+    return report.sort((a, b) => b.totalTokens - a.totalTokens);
 }

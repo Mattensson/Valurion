@@ -59,15 +59,20 @@ export function Sidebar({ user }: SidebarProps) {
                 zIndex: 100
             }}>
                 {/* Logo Header */}
-                <div style={{
-                    padding: isCollapsed ? '1rem 0.5rem' : '1.5rem',
-                    borderBottom: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '96px',
-                    transition: 'padding 0.3s ease'
-                }}>
+                <Link
+                    href="/dashboard"
+                    style={{
+                        padding: isCollapsed ? '1rem 0.5rem' : '1.5rem',
+                        borderBottom: '1px solid var(--border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '96px',
+                        transition: 'padding 0.3s ease',
+                        width: '100%',
+                        boxSizing: 'border-box'
+                    }}
+                >
                     {isCollapsed ? (
                         <img
                             src="/valurion-ai-avatar.png"
@@ -81,7 +86,7 @@ export function Sidebar({ user }: SidebarProps) {
                             style={{ height: '64px', width: 'auto', objectFit: 'contain' }}
                         />
                     )}
-                </div>
+                </Link>
 
                 {/* Toggle Button */}
                 <button

@@ -29,6 +29,8 @@ model Tenant {
   auditLogs AuditLog[]
   documents Document[]
   chats     Chat[]
+  projects  Project[]
+  company   Company?
 }
 
 model User {
@@ -49,8 +51,11 @@ model User {
   updatedAt     DateTime @updatedAt
 
   auditLogs     AuditLog[]
-  documents     Document[]
+  documentsOwned Document[] @relation("DocumentOwner")
+  sharedDocuments Document[] @relation("DocumentShares")
+  
   chats         Chat[]
+  projects      Project[]
   transcriptions Transcription[]
 }
 
@@ -81,13 +86,19 @@ model Document {
   // Optional: Simple text extraction storage for V1
   parsedContent String?  @db.Text 
   
+  // Shared with specific users
+  sharedWith  User[]   @relation("DocumentShares")
+
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation("DocumentOwner", fields: [userId], references: [id])
   
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id])
 
   createdAt   DateTime @default(now())
+
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
 }
 
 model Chat {
@@ -99,6 +110,9 @@ model Chat {
   
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
 
   messages  Message[]
 
@@ -143,4 +157,79 @@ model AIModelConfig {
   updatedAt DateTime @updatedAt
   
   @@unique([provider, mode]) 
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  nonGoals    String?  @db.Text
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  chats       Chat[]
+  documents   Document[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Company Management Models
+model Company {
+  id              String   @id @default(uuid())
+  name            String
+  logo            String?  // URL to company logo
+  industry        String?  // Branche
+  foundedDate     DateTime?
+  employeeCount   Int      @default(0)
+  description     String?  @db.Text
+  
+  tenantId        String   @unique
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  
+  news            CompanyNews[]
+  strategies      CompanyStrategy[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CompanyNews {
+  id              String   @id @default(uuid())
+  title           String
+  summary         String   @db.Text  // AI-generated summary
+  sourceUrls      String[] // Array of URLs from research
+  rawData         String?  @db.Text  // Original research data (optional)
+  
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  researchDate    DateTime @default(now()) // When the research was conducted
+  createdAt       DateTime @default(now())
+  
+  @@index([companyId, researchDate])
+}
+
+model CompanyStrategy {
+  id              String   @id @default(uuid())
+  title           String
+  description     String   @db.Text
+  type            String   // "GOAL", "STRATEGY", "INITIATIVE", "VALUE"
+  priority        Int      @default(0) // For ordering
+  isActive        Boolean  @default(true)
+  
+  // RAG metadata
+  embedding       String?  @db.Text // JSON array of embedding vector (optional for future)
+  
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([companyId, isActive])
 }

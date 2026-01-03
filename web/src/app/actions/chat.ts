@@ -4,7 +4,115 @@ import { prisma } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
-export async function createChat(title: string) {
+// --- Projects ---
+
+export async function createProject(name: string, description: string, nonGoals: string) {
+    const session = await getSession();
+    if (!session) throw new Error('Unauthorized');
+
+    const project = await prisma.project.create({
+        data: {
+            name,
+            description,
+            nonGoals,
+            userId: session.userId,
+            tenantId: session.tenantId
+        }
+    });
+
+    revalidatePath('/dashboard/chat');
+    return project;
+}
+
+export async function updateProject(projectId: string, name: string, description: string, nonGoals: string) {
+    const session = await getSession();
+    if (!session) throw new Error('Unauthorized');
+
+    const project = await prisma.project.update({
+        where: { id: projectId, userId: session.userId },
+        data: {
+            name,
+            description,
+            nonGoals
+        }
+    });
+
+    revalidatePath('/dashboard/chat');
+    return project;
+}
+
+export async function getProjects() {
+    const session = await getSession();
+    if (!session) throw new Error('Unauthorized');
+
+    return await prisma.project.findMany({
+        where: {
+            userId: session.userId
+        },
+        orderBy: {
+            updatedAt: 'desc'
+        },
+        include: {
+            _count: {
+                select: { chats: true }
+            }
+        }
+    });
+}
+
+export async function deleteProject(projectId: string) {
+    const session = await getSession();
+    if (!session) throw new Error('Unauthorized');
+
+    // Delete project (cascade delete handling should be considered, but for now manual or Prisma handles it if configured)
+    // In schema, I didn't add Cascade to Chat relation in Project, so I should probably set Chat.projectId to null or delete chats.
+    // Ideally user wants to keep chats? "Außerhalb des Projektes wissen die Chats nichts von diesem Projekt".
+    // If project is deleted, maybe chats become "No Project".
+    // Or we delete them. Let's assume we delete them for now or unlink.
+    // Let's unlink for safety.
+
+    await prisma.chat.updateMany({
+        where: { projectId: projectId, userId: session.userId },
+        data: { projectId: null }
+    });
+
+    await prisma.project.delete({
+        where: {
+            id: projectId,
+            userId: session.userId
+        }
+    });
+
+    revalidatePath('/dashboard/chat');
+}
+
+export async function getProjectDocuments(projectId: string) {
+    const session = await getSession();
+    if (!session) throw new Error('Unauthorized');
+
+    return await prisma.document.findMany({
+        where: { projectId: projectId, userId: session.userId },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, filename: true, mimeType: true, fileSize: true, createdAt: true }
+    });
+}
+
+export async function deleteDocument(documentId: string) {
+    const session = await getSession();
+    if (!session) throw new Error('Unauthorized');
+
+    // Ideally remove file from disk too, but for now just DB
+    await prisma.document.delete({
+        where: { id: documentId, userId: session.userId }
+    });
+
+    revalidatePath('/dashboard/chat');
+}
+
+
+// --- Chats ---
+
+export async function createChat(title: string, projectId?: string) {
     const session = await getSession();
     if (!session) throw new Error('Unauthorized');
 
@@ -12,7 +120,8 @@ export async function createChat(title: string) {
         data: {
             title,
             userId: session.userId,
-            tenantId: session.tenantId
+            tenantId: session.tenantId,
+            projectId: projectId || null
         }
     });
 
@@ -56,7 +165,8 @@ export async function getChat(chatId: string) {
                 orderBy: {
                     createdAt: 'asc'
                 }
-            }
+            },
+            project: true
         }
     });
 }

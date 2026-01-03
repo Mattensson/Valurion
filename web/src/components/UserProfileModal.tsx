@@ -25,6 +25,7 @@ export function UserProfileModal({ user, isOpen, onClose }: UserProfileModalProp
     const [firstName, setFirstName] = useState(user.firstName || '');
     const [lastName, setLastName] = useState(user.lastName || '');
     const [jobTitle, setJobTitle] = useState(user.jobTitle || '');
+    const [password, setPassword] = useState('');
 
     // New state for avatar
     const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '');
@@ -37,7 +38,7 @@ export function UserProfileModal({ user, isOpen, onClose }: UserProfileModalProp
     const handleSave = async () => {
         setIsLoading(true);
         try {
-            const result = await updateUserDetails(user.id, { firstName, lastName, jobTitle, avatarUrl });
+            const result = await updateUserDetails(user.id, { firstName, lastName, jobTitle, avatarUrl, password: password || undefined });
             if (!result.success) {
                 throw new Error(result.error || 'Unbekannter Fehler');
             }
@@ -199,6 +200,7 @@ export function UserProfileModal({ user, isOpen, onClose }: UserProfileModalProp
                                 onChange={(e) => setFirstName(e.target.value)}
                                 disabled={!isEditing}
                                 placeholder="Max"
+                                style={isEditing ? { backgroundColor: 'white', color: 'black' } : {}}
                             />
                         </div>
                         <div className="input-group" style={{ marginBottom: 0 }}>
@@ -210,6 +212,7 @@ export function UserProfileModal({ user, isOpen, onClose }: UserProfileModalProp
                                 onChange={(e) => setLastName(e.target.value)}
                                 disabled={!isEditing}
                                 placeholder="Mustermann"
+                                style={isEditing ? { backgroundColor: 'white', color: 'black' } : {}}
                             />
                         </div>
                     </div>
@@ -223,8 +226,23 @@ export function UserProfileModal({ user, isOpen, onClose }: UserProfileModalProp
                             onChange={(e) => setJobTitle(e.target.value)}
                             disabled={!isEditing}
                             placeholder="z.B. Marketing Manager"
+                            style={isEditing ? { backgroundColor: 'white', color: 'black' } : {}}
                         />
                     </div>
+
+                    {isEditing && (
+                        <div className="input-group">
+                            <label className="label">Neues Passwort (Optional)</label>
+                            <input
+                                type="password"
+                                className="input-field"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Neues Passwort eingeben"
+                                style={{ backgroundColor: 'white', color: 'black' }}
+                            />
+                        </div>
+                    )}
 
                     <div className="input-group">
                         <label className="label">E-Mail Adresse (Login)</label>

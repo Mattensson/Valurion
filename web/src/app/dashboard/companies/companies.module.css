@@ -1,0 +1,559 @@
+.container {
+    padding: 2rem;
+    height: 100%;
+    overflow-y: auto;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.header {
+    margin-bottom: 2rem;
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 1.5rem;
+}
+
+.tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 0.5rem;
+}
+
+.tab,
+.tabActive {
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 8px 8px 0 0;
+}
+
+.tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.tabActive {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    font-weight: 600;
+}
+
+.content {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.cardHeader h2 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.btnPrimary,
+.btnSecondary {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.95rem;
+}
+
+.btnPrimary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btnPrimary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btnSecondary {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.btnSecondary:hover {
+    background: #e0e0e0;
+}
+
+.loading {
+    text-align: center;
+    padding: 4rem;
+    color: white;
+    font-size: 1.25rem;
+}
+
+/* Overview Styles */
+.overview {
+    animation: fadeIn 0.4s ease;
+}
+
+.infoGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.infoItem {
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 12px;
+    transition: transform 0.3s ease;
+}
+
+.infoItem:hover {
+    transform: translateY(-4px);
+}
+
+.infoLabel {
+    font-size: 0.875rem;
+    color: #666;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.infoValue {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #333;
+}
+
+.description {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: #f9fafb;
+    border-radius: 12px;
+    border-left: 4px solid #667eea;
+}
+
+.description h3 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+    color: #333;
+}
+
+.description p {
+    color: #666;
+    line-height: 1.6;
+}
+
+/* Form Styles */
+.form {
+    background: #f9fafb;
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+}
+
+.formGroup {
+    margin-bottom: 1.5rem;
+}
+
+.formGroup label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95rem;
+}
+
+.input,
+.textarea,
+.select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.textarea {
+    resize: vertical;
+    font-family: inherit;
+}
+
+/* News Styles */
+.newsList {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.newsItem {
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.newsItem:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.newsDate {
+    font-size: 0.875rem;
+    color: #667eea;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.newsDateRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.btnDeleteNews {
+    background: transparent;
+    border: none;
+    padding: 0.4rem;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.5;
+    color: #666;
+}
+
+.btnDeleteNews:hover {
+    opacity: 1;
+    color: #ef4444;
+}
+
+.newsHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    border-radius: 8px;
+    transition: background 0.2s ease;
+}
+
+.newsHeader:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.expandIcon {
+    font-size: 1rem;
+    color: #667eea;
+    transition: transform 0.3s ease;
+    user-select: none;
+}
+
+.newsItem h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #333;
+    margin: 0;
+    flex: 1;
+}
+
+.newsPreview {
+    background: rgba(255, 255, 255, 0.5);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+}
+
+.newsPreview strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #667eea;
+    font-size: 0.9rem;
+}
+
+.newsPreview ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.newsPreview li {
+    padding: 0.5rem 0;
+    color: #333;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.newsPreview li:last-child {
+    border-bottom: none;
+}
+
+.clickHint {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: #999;
+    font-style: italic;
+    text-align: center;
+}
+
+.newsSummary {
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+}
+
+.sources {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    font-size: 0.875rem;
+}
+
+.sources strong {
+    color: #333;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.sources ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sources li {
+    margin-bottom: 0.25rem;
+}
+
+.sources a {
+    color: #667eea;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.sources a:hover {
+    text-decoration: underline;
+}
+
+/* Strategy Styles */
+.strategyInfo {
+    margin-bottom: 2rem;
+}
+
+.infoBox {
+    background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    color: #333;
+    line-height: 1.6;
+    border-left: 4px solid #fdcb6e;
+}
+
+.strategiesList {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.strategySection h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #667eea;
+}
+
+.strategyItem {
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+    border-left: 4px solid #667eea;
+}
+
+.strategyItem.inactive {
+    opacity: 0.6;
+    border-left-color: #ccc;
+}
+
+.strategyItem:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.strategyHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.strategyItem h4 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 0.25rem;
+}
+
+.priority {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: rgba(102, 126, 234, 0.2);
+    color: #667eea;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.25rem;
+}
+
+.strategyItem p {
+    color: #666;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.strategyActions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btnToggle,
+.btnDelete {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 0.5rem;
+    cursor: pointer;
+    font-size: 1.25rem;
+    transition: all 0.3s ease;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btnToggle:hover {
+    background: #f0f0f0;
+    border-color: #667eea;
+}
+
+.btnDelete:hover {
+    background: #fee;
+    border-color: #f44;
+}
+
+/* Empty State */
+.empty {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #666;
+}
+
+.empty p {
+    font-size: 1.125rem;
+    margin-bottom: 0.5rem;
+}
+
+.hint {
+    font-size: 0.95rem;
+    color: #999;
+    font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+
+    .header h1 {
+        font-size: 1.75rem;
+    }
+
+    .tabs {
+        overflow-x: auto;
+    }
+
+    .tab,
+    .tabActive {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+
+    .card {
+        padding: 1.5rem;
+    }
+
+    .cardHeader {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .infoGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .strategyHeader {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .strategyActions {
+        align-self: flex-end;
+    }
+}

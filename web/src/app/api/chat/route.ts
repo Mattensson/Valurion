@@ -12,7 +12,40 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        const { messages, provider, mode, temperature } = await request.json();
+        const { messages, provider, mode, temperature, chatId } = await request.json();
+
+        // Check for Project Context
+        let projectContext = "";
+        if (chatId) {
+            const chat = await prisma.chat.findUnique({
+                where: { id: chatId },
+                include: { project: true }
+            });
+
+            if (chat?.project) {
+                projectContext = `\n\nHIER SIND DIE PROJEKT-ANWEISUNGEN FÜR DIESEN CHAT:\nPROJEKT NAME: ${chat.project.name}\nZIEL (INSTRUCTIONS): ${chat.project.description || "Keine"}\nNICHT-ZIELE (NON-GOALS): ${chat.project.nonGoals || "Keine"}\n\nBitte berücksichtige diese Anweisungen strikt bei deiner Antwort. Verfolge die Ziele und vermeide die Nicht-Ziele.`;
+                console.log('Project Context Injected:', chat.project.name);
+
+                // Fetch Project Documents (RAG)
+                const documents = await prisma.document.findMany({
+                    where: { projectId: chat.project.id },
+                    select: { filename: true, parsedContent: true }
+                });
+
+                if (documents.length > 0) {
+                    let knowledgeBase = "\n\nWISSENSBASIS AUS PROJEKT-DATEIEN (Nutze dies als Faktengrundlage):\n";
+                    for (const doc of documents) {
+                        if (doc.parsedContent) {
+                            // Simple Truncation to avoid context explosion (approx 10k chars per file max for now)
+                            const content = doc.parsedContent.substring(0, 10000);
+                            knowledgeBase += `\n--- DATEI: ${doc.filename} ---\n${content}\n---------------------------------\n`;
+                        }
+                    }
+                    projectContext += knowledgeBase;
+                    console.log(`Injected ${documents.length} documents into context.`);
+                }
+            }
+        }
 
         const processedMessages = await processMessages(messages);
 
@@ -36,13 +69,31 @@ export async function POST(request: NextRequest) {
         }
 
         let aiResponse: string;
+        let totalTokens = 0;
 
         if (provider === 'OpenAI') {
-            aiResponse = await callOpenAIWithTools(processedMessages, config.modelId, temperature);
+            const result = await callOpenAIWithTools(processedMessages, config.modelId, temperature, projectContext);
+            aiResponse = result.content;
+            totalTokens = result.tokens;
         } else if (provider === 'Gemini') {
-            aiResponse = await callGeminiWithTools(processedMessages, config.modelId, temperature);
+            const result = await callGeminiWithTools(processedMessages, config.modelId, temperature, projectContext);
+            aiResponse = result.content;
+            totalTokens = result.tokens;
         } else {
             return NextResponse.json({ error: 'Unknown provider' }, { status: 400 });
+        }
+
+        // Log Token Usage
+        if (session.userId && totalTokens > 0) {
+            await prisma.auditLog.create({
+                data: {
+                    action: 'CHAT_INTERACTION',
+                    modelUsed: config.modelId,
+                    tokenCount: totalTokens,
+                    userId: session.userId,
+                    tenantId: session.tenantId,
+                }
+            });
         }
 
         return NextResponse.json({ message: aiResponse });
@@ -68,7 +119,7 @@ function getSystemInstruction(temperature: number): string {
 }
 
 // OpenAI with Function Calling
-async function callOpenAIWithTools(messages: any[], model: string, temperature: number): Promise<string> {
+async function callOpenAIWithTools(messages: any[], model: string, temperature: number, projectContext: string = ""): Promise<{ content: string, tokens: number }> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error('No OpenAI API key');
 
@@ -90,14 +141,15 @@ async function callOpenAIWithTools(messages: any[], model: string, temperature: 
         }
     }];
 
-    // Add system instruction based on temperature
-    const systemInstruction = getSystemInstruction(temperature);
+    // Add system instruction based on temperature and project context
+    const systemInstruction = getSystemInstruction(temperature) + projectContext;
     let conversationMessages = [
         { role: 'system', content: systemInstruction },
         ...messages
     ];
     let iterations = 0;
     const maxIterations = 3;
+    let totalTokensUsed = 0;
 
     while (iterations < maxIterations) {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -143,6 +195,12 @@ async function callOpenAIWithTools(messages: any[], model: string, temperature: 
         }
 
         const data = await response.json();
+
+        // Track usage
+        if (data.usage && data.usage.total_tokens) {
+            totalTokensUsed += data.usage.total_tokens;
+        }
+
         const message = data.choices[0].message;
 
         // Check if model wants to call a function
@@ -166,17 +224,17 @@ async function callOpenAIWithTools(messages: any[], model: string, temperature: 
             iterations++;
         } else {
             // No more function calls, return final answer
-            return message.content;
+            return { content: message.content, tokens: totalTokensUsed };
         }
     }
 
     // Fallback if max iterations reached
     const lastMsg = conversationMessages[conversationMessages.length - 1];
-    return lastMsg.content || 'Keine Antwort erhalten';
+    return { content: lastMsg.content || 'Keine Antwort erhalten', tokens: totalTokensUsed };
 }
 
 // Gemini with Function Calling
-async function callGeminiWithTools(messages: any[], model: string, temperature: number): Promise<string> {
+async function callGeminiWithTools(messages: any[], model: string, temperature: number, projectContext: string = ""): Promise<{ content: string, tokens: number }> {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('No Gemini API key');
 
@@ -220,11 +278,12 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
         }]
     }];
 
-    const systemInstructionText = getSystemInstruction(temperature);
+    const systemInstructionText = getSystemInstruction(temperature) + projectContext;
 
     let conversationContents = [...contents];
     let iterations = 0;
     const maxIterations = 3;
+    let totalTokensUsed = 0;
 
     while (iterations < maxIterations) {
         const bodyObj: any = {
@@ -252,6 +311,12 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
         }
 
         const data = await response.json();
+
+        // Track Usage (Gemini format: usageMetadata)
+        if (data.usageMetadata && data.usageMetadata.totalTokenCount) {
+            totalTokensUsed += data.usageMetadata.totalTokenCount;
+        }
+
         const candidate = data.candidates[0];
 
         // Check for function calls
@@ -279,13 +344,13 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
             }
         } else {
             // No function call, return final answer
-            return candidate.content.parts[0].text;
+            return { content: candidate.content.parts[0].text, tokens: totalTokensUsed };
         }
     }
 
     // Fallback
     const lastContent = conversationContents[conversationContents.length - 1];
-    return lastContent.parts[0].text || 'Keine Antwort erhalten';
+    return { content: lastContent.parts[0].text || 'Keine Antwort erhalten', tokens: totalTokensUsed };
 }
 
 // Helper to process messages and extract local images
