@@ -148,7 +148,11 @@ export default function TranscribePage() {
 
         } catch (err) {
             console.error('Error accessing microphone:', err);
-            setError('Zugriff auf Mikrofon verweigert oder nicht verfügbar.');
+            if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                setError('Sicherheitswarnung: Mikrofonzugriff erfordert HTTPS. Bitte SSL einrichten oder Upload nutzen.');
+            } else {
+                setError('Zugriff auf Mikrofon verweigert. Bitte Berechtigungen prüfen & Seite neu laden.');
+            }
         }
     };
 

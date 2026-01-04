@@ -31,6 +31,11 @@ Write-Host "`nStep 2: Copying .env file..." -ForegroundColor Yellow
 scp -o StrictHostKeyChecking=no $LocalEnvPath "${User}@${ServerIP}:${RemotePath}/web/.env"
 if ($LASTEXITCODE -ne 0) { Write-Error "Step 2 failed"; exit 1 }
 
+# 2b. Copy Caddyfile
+Write-Host "`nStep 2b: Copying Caddyfile..." -ForegroundColor Yellow
+scp -o StrictHostKeyChecking=no "$PSScriptRoot\Caddyfile" "${User}@${ServerIP}:${RemotePath}/Caddyfile"
+if ($LASTEXITCODE -ne 0) { Write-Error "Step 2b failed"; exit 1 }
+
 # 3. Rebuild and Restart Docker Containers
 Write-Host "`nStep 3: Rebuilding and restarting Docker containers..." -ForegroundColor Yellow
 ssh -o StrictHostKeyChecking=no "${User}@${ServerIP}" "cd $RemotePath && docker compose down && docker compose up -d --build"

@@ -1,0 +1,3 @@
+valurion.mss-consulting.net {
+    reverse_proxy web:3000
+}
