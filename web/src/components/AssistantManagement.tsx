@@ -148,7 +148,9 @@ export function AssistantManagement() {
                                 flexShrink: 0
                             }}
                         >
-                            {assistant.icon}
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d={assistant.icon} />
+                            </svg>
                         </div>
 
                         <div style={{ flex: 1 }}>
