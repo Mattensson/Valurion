@@ -17,7 +17,7 @@ if (typeof (global as any).Path2D === 'undefined') {
 }
 
 // Use pdfjs-dist for robust PDF text extraction in Node
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+// pdfjs-dist will be lazy loaded in processMessages
 
 export async function POST(request: NextRequest) {
     const session = await getSession();
@@ -435,6 +435,7 @@ async function processMessages(messages: any[]) {
                             }
                             else if (ext === 'pdf') {
                                 try {
+                                    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
                                     const data = new Uint8Array(fileBuffer);
                                     const loadingTask = pdfjsLib.getDocument({ data });
                                     const pdfDocument = await loadingTask.promise;

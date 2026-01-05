@@ -85,7 +85,22 @@ async function main() {
         console.log(`Created assistant: ${a.name}`);
     }
 
-    console.log(`Seeding finished.`);
+    console.log(`Seeding assistants finished.`);
+
+    console.log(`Resetting AI Model Configs (Global Logic)...`);
+    await prisma.aIModelConfig.deleteMany({});
+
+    const modelConfigs = [
+        { provider: 'OpenAI', mode: 'fast', modelId: 'gpt-4o-mini' },
+        { provider: 'OpenAI', mode: 'thinking', modelId: 'gpt-4o' }, // O1/gpt-5 not yet fully supported with tools/system
+        { provider: 'Gemini', mode: 'fast', modelId: 'gemini-1.5-flash' },
+        { provider: 'Gemini', mode: 'thinking', modelId: 'gemini-1.5-pro' },
+    ];
+
+    for (const c of modelConfigs) {
+        await prisma.aIModelConfig.create({ data: c });
+        console.log(`Configured ${c.provider} / ${c.mode} -> ${c.modelId}`);
+    }
 }
 
 main()
