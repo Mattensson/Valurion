@@ -51,24 +51,26 @@ export async function GET(request: NextRequest) {
                 if (geminiResponse.ok) {
                     const data = await geminiResponse.json();
 
-                    // Only include models that support function calling (1.5+, 2.0+, 2.5+)
-                    const FUNCTION_CALLING_MODELS = [
-                        'gemini-1.5-pro',
-                        'gemini-1.5-flash',
-                        'gemini-2.0-flash',
-                        'gemini-2.0-pro',
-                        'gemini-2.5-flash',
-                        'gemini-2.5-pro',
-                        'gemini-3-',  // Future versions
-                    ];
-
                     models.gemini = data.models
                         .filter((m: any) => {
-                            const modelName = m.name.replace('models/', '');
-                            // Check if model name starts with any supported version
-                            return FUNCTION_CALLING_MODELS.some(supported =>
-                                modelName.startsWith(supported)
-                            ) && m.supportedGenerationMethods?.includes('generateContent');
+                            const name = m.name.toLowerCase();
+                            const desc = (m.description || '').toLowerCase();
+                            const methods = m.supportedGenerationMethods || [];
+
+                            // 1. Must support content generation
+                            if (!methods.includes('generateContent')) return false;
+
+                            // 2. Exclude non-chat specialized models
+                            if (name.includes('embedding')) return false;
+                            if (name.includes('vision') || name.includes('imagen') || name.includes('veo')) return false; // Image/Video only
+                            if (name.includes('tts') || name.includes('audio')) return false; // Audio only
+                            if (name.includes('aqa')) return false; // Specialized QA model
+
+                            // 3. Filter out models that explicitly require billing if likely on free tier
+                            // (Conservative approach: hide them to prevent confusion)
+                            if (desc.includes('billing') && desc.includes('enable')) return false;
+
+                            return true;
                         })
                         .map((m: any) => m.name.replace('models/', ''))
                         .sort();

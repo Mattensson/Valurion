@@ -165,12 +165,12 @@ export default function DocumentsPage() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
-    const getIcon = (mimeType: string) => {
-        if (mimeType.includes('pdf')) return '📄';
-        if (mimeType.includes('image')) return '🖼️';
-        if (mimeType.includes('text')) return '📝';
-        if (mimeType.includes('spreadsheet') || mimeType.includes('csv') || mimeType.includes('excel')) return '📊';
-        return '📁';
+    const getIconPath = (mimeType: string) => {
+        if (mimeType.includes('pdf')) return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+        if (mimeType.includes('image')) return 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z';
+        if (mimeType.includes('text')) return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+        if (mimeType.includes('spreadsheet') || mimeType.includes('csv') || mimeType.includes('excel')) return 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z';
+        return 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z';
     };
 
     return (
@@ -208,7 +208,9 @@ export default function DocumentsPage() {
                     ref={fileInputRef}
                     onChange={handleFileUpload}
                 />
-                <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>☁️</div>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
+                    <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z" />
+                </svg>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem' }}>
                     {isUploading ? 'Wird hochgeladen...' : 'Datei hier ablegen oder klicken zum Hochladen'}
                 </h3>
@@ -230,7 +232,11 @@ export default function DocumentsPage() {
                         fontSize: '1rem', fontWeight: 500
                     }}
                 >
-                    🔒 Meine Dokumente ({myDocs.length})
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0110 0v4" />
+                    </svg>
+                    <span>Meine Dokumente ({myDocs.length})</span>
                 </button>
                 <button
                     onClick={() => setActiveTab('shared')}
@@ -245,7 +251,13 @@ export default function DocumentsPage() {
                         fontSize: '1rem', fontWeight: 500
                     }}
                 >
-                    👥 Mit mir geteilt ({sharedDocs.length})
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                        <path d="M16 3.13a4 4 0 010 7.75" />
+                    </svg>
+                    <span>Mit mir geteilt ({sharedDocs.length})</span>
                 </button>
             </div>
 
@@ -429,7 +441,7 @@ export default function DocumentsPage() {
                                 isOwner={true}
                                 onShareClick={(e: React.MouseEvent) => handleShareClick(e, doc.id)}
                                 onDeleteClick={(e: React.MouseEvent) => handleDeleteClick(e, doc.id)}
-                                getIcon={getIcon}
+                                getIconPath={getIconPath}
                                 formatSize={formatSize}
                             />
                         ))
@@ -445,7 +457,7 @@ export default function DocumentsPage() {
                                 isOwner={false}
                                 onShareClick={() => { }}
                                 onDeleteClick={() => { }}
-                                getIcon={getIcon}
+                                getIconPath={getIconPath}
                                 formatSize={formatSize}
                             />
                         ))
@@ -456,7 +468,7 @@ export default function DocumentsPage() {
     );
 }
 
-function DocumentCard({ doc, isOwner, onShareClick, onDeleteClick, getIcon, formatSize }: any) {
+function DocumentCard({ doc, isOwner, onShareClick, onDeleteClick, getIconPath, formatSize }: any) {
     return (
         <div className="glass-panel" style={{
             padding: '1.5rem',
@@ -471,7 +483,9 @@ function DocumentCard({ doc, isOwner, onShareClick, onDeleteClick, getIcon, form
         }}>
             {/* Top Row: Icon & Actions */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ fontSize: '2.5rem' }}>{getIcon(doc.mimeType)}</div>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={getIconPath(doc.mimeType)} />
+                </svg>
 
                 {isOwner && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>

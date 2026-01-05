@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '100mb',
     },
   },
+  // @ts-ignore
+  turbo: {
+    resolveAlias: {
+      canvas: './src/lib/mock-canvas.js',
+    },
+  },
 };
 
 export default nextConfig;

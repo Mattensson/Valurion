@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createChat, getChats, getChat, saveMessage, deleteChat, createProject, getProjects, deleteProject, updateProject, getProjectDocuments, deleteDocument } from '@/app/actions/chat';
 
 const renderContent = (content: string) => {
@@ -41,10 +42,44 @@ export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
     // AI Settings State
+    const searchParams = useSearchParams();
+    const [activeAssistant, setActiveAssistant] = useState<{ id: string; name: string; icon?: string; gradient?: string; provider?: string } | null>(null);
+    const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+
     const [showSettings, setShowSettings] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState('OpenAI');
     const [selectedMode, setSelectedMode] = useState('Thinking'); // 'Fast' or 'Thinking'
     const [temperature, setTemperature] = useState(0.7);
+
+    // Initialize from URL params if present (Assistant Mode)
+    useEffect(() => {
+        const assistantId = searchParams.get('assistant');
+        if (assistantId) {
+            setActiveAssistant({
+                id: assistantId,
+                name: searchParams.get('name') || 'Assistant',
+                icon: searchParams.get('icon') || undefined,
+                gradient: searchParams.get('gradient') || undefined,
+                provider: searchParams.get('provider') || undefined
+            });
+
+            const prompt = searchParams.get('prompt');
+            if (prompt) setSystemPrompt(prompt);
+
+            const provider = searchParams.get('provider');
+            if (provider) setSelectedProvider(provider);
+
+            const model = searchParams.get('model');
+            // We don't directly select exact model ID here as UI uses Mode/Provider abstraction, 
+            // but we can imply mode maybe? For now trust provider settings.
+
+            const temp = searchParams.get('temp');
+            if (temp) setTemperature(parseFloat(temp));
+
+            // Auto close settings if they were open (shouldn't be open by default anyway)
+            setShowSettings(false);
+        }
+    }, [searchParams]);
 
     // Chat State
     type Message = { role: 'user' | 'assistant'; content: string };
@@ -54,7 +89,17 @@ export default function ChatPage() {
     const [isUploading, setIsUploading] = useState(false);
 
     // Saved Chats & Projects
-    type ChatItem = { id: string; title: string; updatedAt: Date; messages: any[]; projectId?: string | null };
+    type ChatItem = {
+        id: string;
+        title: string;
+        updatedAt: Date;
+        messages: any[];
+        projectId?: string | null;
+        provider?: string | null;
+        mode?: string | null;
+        assistantId?: string | null;
+        assistant?: { id: string; name: string; icon: string; gradient: string } | null;
+    };
     type ProjectItem = { id: string; name: string; description?: string; nonGoals?: string };
 
     const [chats, setChats] = useState<ChatItem[]>([]);
@@ -81,6 +126,12 @@ export default function ChatPage() {
 
     // Active Project Context for new chats
     const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+    // Plus Menu State
+    const [showPlusMenu, setShowPlusMenu] = useState(false);
+    const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
         loadData();
@@ -117,6 +168,42 @@ export default function ChatPage() {
             toggleProject(projectId);
         }
     };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const files = Array.from(e.target.files);
+
+            files.forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        if (event.target?.result) {
+                            setAttachments(prev => [...prev, {
+                                file: file,
+                                preview: event.target!.result as string
+                            }]);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    // For non-images, we don't generate a base64 preview, but we store the file
+                    // The UI should handle displaying a generic file icon based on !preview
+                    setAttachments(prev => [...prev, {
+                        file: file,
+                        preview: '' // Empty string indicates no image preview
+                    }]);
+                }
+            });
+
+            // Reset input value to allow selecting the same file again if needed
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+
+            setShowPlusMenu(false);
+        }
+    };
+
 
     const handleCreateProject = async () => {
         if (!newProjectData.name) return;
@@ -295,7 +382,12 @@ export default function ChatPage() {
 
                     if (!res.ok) throw new Error('Upload failed');
                     const data = await res.json();
-                    return `![Image](${data.url})`;
+
+                    if (att.file.type.startsWith('image/')) {
+                        return `![${att.file.name}](${data.url})`;
+                    } else {
+                        return `[Datei: ${att.file.name}](${data.url})`;
+                    }
                 });
 
                 const uploadedUrls = await Promise.all(uploadPromises);
@@ -323,7 +415,17 @@ export default function ChatPage() {
             let chatId = currentChatId;
             if (!chatId) {
                 // If we have an active project intent, use it
-                const newChat = await createChat(finalContent.substring(0, 50) || (activeProjectId ? 'Projekt Chat' : 'Neuer Chat'), activeProjectId || undefined);
+                // If we have an active activeAssistant, use its details
+                const currentMode = activeAssistant ? 'assistant' : selectedMode.toLowerCase();
+                const currentProvider = activeAssistant ? activeAssistant.provider : selectedProvider;
+
+                const newChat = await createChat(
+                    finalContent.substring(0, 50) || (activeProjectId ? 'Projekt Chat' : 'Neuer Chat'),
+                    activeProjectId || undefined,
+                    selectedProvider,
+                    selectedMode.toLowerCase(),
+                    activeAssistant?.id
+                );
                 chatId = newChat.id;
                 setCurrentChatId(chatId);
                 // Don't await loadData here to speed up UI, maybe later?
@@ -345,7 +447,8 @@ export default function ChatPage() {
                     messages: [...messages, userMessage],
                     provider: selectedProvider,
                     mode: selectedMode.toLowerCase(),
-                    temperature
+                    temperature,
+                    systemPrompt // Pass system prompt if set (active assistant)
                 })
             });
 
@@ -414,7 +517,10 @@ export default function ChatPage() {
                             boxShadow: '0 4px 12px rgba(1, 180, 216, 0.3)'
                         }}
                     >
-                        <span style={{ fontSize: '1.2rem' }}>+</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
                         Neuer Chat
                     </button>
 
@@ -428,7 +534,12 @@ export default function ChatPage() {
                             opacity: 0.8
                         }}
                     >
-                        + Neues Projekt
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <line x1="12" y1="8" x2="12" y2="16" />
+                            <line x1="8" y1="12" x2="16" y2="12" />
+                        </svg>
+                        Neues Projekt
                     </button>
                 </div>
 
@@ -464,7 +575,11 @@ export default function ChatPage() {
                                             userSelect: 'none'
                                         }}
                                     >
-                                        <span style={{ marginRight: '0.5rem', fontSize: '0.7rem', transform: expandedProjects.has(proj.id) ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▶</span>
+                                        <span style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center', transform: expandedProjects.has(proj.id) ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="9 18 15 12 9 6" />
+                                            </svg>
+                                        </span>
                                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</span>
                                         <button
                                             onClick={(e) => {
@@ -475,7 +590,10 @@ export default function ChatPage() {
                                             style={{ padding: '0 4px', height: '20px', minWidth: 'unset', opacity: 0.4, marginRight: '4px' }}
                                             title="Projekt bearbeiten"
                                         >
-                                            ✎
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                            </svg>
                                         </button>
                                         <button
                                             onClick={(e) => {
@@ -488,7 +606,10 @@ export default function ChatPage() {
                                             style={{ padding: '0 4px', height: '20px', minWidth: 'unset', opacity: 0.4 }}
                                             title="Projekt löschen"
                                         >
-                                            ×
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18" />
+                                                <line x1="6" y1="6" x2="18" y2="18" />
+                                            </svg>
                                         </button>
                                     </div>
 
@@ -510,7 +631,11 @@ export default function ChatPage() {
                                                     textAlign: 'left'
                                                 }}
                                             >
-                                                <span>+</span> Neuer Projekt-Chat
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                                </svg>
+                                                Neuer Projekt-Chat
                                             </button>
 
                                             {projectChats(proj.id).map(chat => (
@@ -563,7 +688,10 @@ export default function ChatPage() {
                                                             opacity: 0.3
                                                         }}
                                                     >
-                                                        ×
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                                        </svg>
                                                     </button>
                                                 </div>
                                             ))}
@@ -620,6 +748,42 @@ export default function ChatPage() {
                                     transition: 'all 0.2s ease'
                                 }}
                             >
+                                {chat.assistant ? (
+                                    <div style={{
+                                        width: '18px', height: '18px', borderRadius: '4px',
+                                        background: chat.assistant.gradient || '#6366f1',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        marginRight: '8px', flexShrink: 0, color: 'white'
+                                    }}>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d={chat.assistant.icon || "M12 2a10 10 0 1 0 10 10H12V2z"} />
+                                        </svg>
+                                    </div>
+                                ) : chat.mode === 'thinking' ? (
+                                    <div style={{
+                                        width: '18px', height: '18px', borderRadius: '4px',
+                                        background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        marginRight: '8px', flexShrink: 0
+                                    }}>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                                            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+                                            <path d="M12 18a6 6 0 0 0-6-6m6 0a6 6 0 0 0 6 6" />
+                                        </svg>
+                                    </div>
+                                ) : chat.mode === 'fast' ? (
+                                    <div style={{
+                                        width: '18px', height: '18px', borderRadius: '4px',
+                                        background: 'rgba(249, 115, 22, 0.15)', color: '#f97316',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        marginRight: '8px', flexShrink: 0
+                                    }}>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" strokeLinecap="round" strokeLinejoin="round">
+                                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                                        </svg>
+                                    </div>
+                                ) : null}
                                 {chat.title}
                             </button>
                             <button
@@ -665,24 +829,70 @@ export default function ChatPage() {
                     justifyContent: 'space-between'
                 }}>
                     <div style={{ position: 'relative' }}>
-                        <div
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
-                            onClick={() => setShowSettings(!showSettings)}
-                        >
-                            {!sidebarOpen && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setSidebarOpen(true); }}
-                                    className="btn btn-ghost"
-                                    style={{ padding: '0.5rem', marginRight: '0.5rem' }}
-                                >
-                                    ◫
-                                </button>
-                            )}
-                            <span style={{ fontWeight: 600, color: 'hsl(var(--muted-foreground))' }}>
-                                Valurion AI 4.0 <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>({selectedProvider} - {selectedMode})</span>
-                            </span>
-                            <span style={{ fontSize: '0.8rem', color: 'hsl(var(--muted-foreground))' }}>▼</span>
-                        </div>
+                        {activeAssistant ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                {!sidebarOpen && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSidebarOpen(true); }}
+                                        className="btn btn-ghost"
+                                        style={{ padding: '0.5rem', marginRight: '0.5rem' }}
+                                    >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                            <line x1="9" y1="3" x2="9" y2="21" />
+                                        </svg>
+                                    </button>
+                                )}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    background: activeAssistant.gradient || 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                                    color: 'white'
+                                }}>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        {activeAssistant.icon ? (
+                                            <path d={activeAssistant.icon} />
+                                        ) : (
+                                            <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+                                        )}
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: '1rem' }}>{activeAssistant.name}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'hsl(var(--muted-foreground))' }}>
+                                        {selectedProvider} • {selectedMode}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                                onClick={() => setShowSettings(!showSettings)}
+                            >
+                                {!sidebarOpen && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSidebarOpen(true); }}
+                                        className="btn btn-ghost"
+                                        style={{ padding: '0.5rem', marginRight: '0.5rem' }}
+                                    >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                            <line x1="9" y1="3" x2="9" y2="21" />
+                                        </svg>
+                                    </button>
+                                )}
+                                <span style={{ fontWeight: 600, color: 'hsl(var(--muted-foreground))' }}>
+                                    Valurion AI 4.0 <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>({selectedProvider} - {selectedMode})</span>
+                                </span>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </div>
+                        )}
 
                         {currentProjectName && (
                             <div style={{
@@ -696,7 +906,12 @@ export default function ChatPage() {
                                 borderRadius: '4px',
                                 gap: '0.5rem'
                             }}>
-                                <span>📁 {currentProjectName}</span>
+                                <span>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', marginRight: '4px', verticalAlign: 'middle' }}>
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    </svg>
+                                    {currentProjectName}
+                                </span>
                             </div>
                         )}
 
@@ -735,14 +950,21 @@ export default function ChatPage() {
                                             onClick={() => setSelectedMode('Fast')}
                                             style={{ flex: 1, fontSize: '0.875rem' }}
                                         >
-                                            ⚡ Fast
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                                            </svg>
+                                            Fast
                                         </button>
                                         <button
                                             className={`btn ${selectedMode === 'Thinking' ? 'btn-primary' : 'btn-ghost'}`}
                                             onClick={() => setSelectedMode('Thinking')}
                                             style={{ flex: 1, fontSize: '0.875rem' }}
                                         >
-                                            🧠 Thinking
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                                            </svg>
+                                            Thinking
                                         </button>
                                     </div>
                                 </div>
@@ -772,7 +994,10 @@ export default function ChatPage() {
 
                     {sidebarOpen && (
                         <button onClick={() => setSidebarOpen(false)} className="btn btn-ghost" style={{ padding: '0.5rem' }}>
-                            ◫
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                <line x1="9" y1="3" x2="9" y2="21" />
+                            </svg>
                         </button>
                     )}
                 </div>
@@ -837,7 +1062,12 @@ export default function ChatPage() {
                                         flexShrink: 0,
                                         padding: msg.role === 'assistant' ? '6px' : '0'
                                     }}>
-                                        {msg.role === 'user' ? '👤' : <img src="/chatbot-logo.png" alt="AI" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+                                        {msg.role === 'user' ? (
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                                <circle cx="12" cy="7" r="4" />
+                                            </svg>
+                                        ) : <img src="/chatbot-logo.png" alt="AI" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
                                     </div>
                                     <div style={{
                                         flex: 1,
@@ -902,18 +1132,25 @@ export default function ChatPage() {
                         marginBottom: attachments.length > 0 ? '0.5rem' : '0'
                     }}>
                         {attachments.map((att, index) => (
-                            <div key={index} style={{ position: 'relative', width: '64px', height: '64px' }}>
-                                <img
-                                    src={att.preview}
-                                    alt="Preview"
-                                    style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        objectFit: 'cover',
-                                        borderRadius: '0.5rem',
-                                        border: '1px solid var(--border)'
-                                    }}
-                                />
+                            <div key={index} style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '0.5rem', border: '1px solid var(--border)', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
+                                {att.preview ? (
+                                    <img
+                                        src={att.preview}
+                                        alt={att.file.name}
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover'
+                                        }}
+                                    />
+                                ) : (
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'hsl(var(--muted-foreground))' }} title={att.file.name}>
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                            <polyline points="14 2 14 8 20 8" />
+                                        </svg>
+                                    </div>
+                                )}
                                 <button
                                     onClick={() => removeAttachment(index)}
                                     style={{
@@ -933,7 +1170,10 @@ export default function ChatPage() {
                                         justifyContent: 'center'
                                     }}
                                 >
-                                    ×
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18" />
+                                        <line x1="6" y1="6" x2="18" y2="18" />
+                                    </svg>
                                 </button>
                             </div>
                         ))}
@@ -944,49 +1184,177 @@ export default function ChatPage() {
                         maxWidth: '768px',
                         position: 'relative'
                     }}>
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            onPaste={handlePaste}
-                            placeholder={currentProjectName ? `Nachricht im Projekt "${currentProjectName}"...` : "Nachricht an Valurion AI..."}
-                            disabled={isLoading || isUploading}
-                            style={{
-                                width: '100%',
-                                padding: '1rem 3rem 1rem 1.5rem',
-                                borderRadius: '9999px',
-                                background: 'var(--card)',
-                                border: '1px solid var(--border)',
-                                color: 'inherit',
-                                fontSize: '1rem',
-                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                                outline: 'none'
-                            }}
-                        />
-                        <button
-                            onClick={handleSend}
-                            disabled={(!input.trim() && attachments.length === 0) || isLoading || isUploading}
-                            style={{
-                                position: 'absolute',
-                                right: '0.75rem',
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                background: (input.trim() && !isLoading) ? 'hsl(var(--primary))' : 'var(--muted)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '50%',
-                                width: '32px',
-                                height: '32px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: (input.trim() && !isLoading) ? 'pointer' : 'default',
-                                transition: 'background 0.2s'
-                            }}
-                        >
-                            ↑
-                        </button>
+                        <div style={{ position: 'relative', width: '100%' }}>
+                            {/* Plus Menu Button */}
+                            <div style={{ position: 'absolute', left: '0.75rem', top: 'calc(50% - 4px)', transform: 'translateY(-50%)', zIndex: 10, display: 'flex', alignItems: 'center' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPlusMenu(!showPlusMenu)}
+                                    style={{
+                                        background: showPlusMenu ? 'hsl(var(--primary))' : 'rgba(255,255,255,0.1)',
+                                        color: showPlusMenu ? 'white' : 'hsl(var(--foreground))',
+                                        border: '1px solid rgba(255,255,255,0.2)',
+                                        borderRadius: '50%',
+                                        width: '32px',
+                                        height: '32px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        fontSize: '1.2rem',
+                                        fontWeight: 600,
+                                        transition: 'all 0.2s',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                    }}
+                                >
+                                    {showPlusMenu ? (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                    ) : (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <line x1="12" y1="5" x2="12" y2="19" />
+                                            <line x1="5" y1="12" x2="19" y2="12" />
+                                        </svg>
+                                    )}
+                                </button>
+
+                                {/* Plus Menu Dropdown */}
+                                {showPlusMenu && (
+                                    <div
+                                        className="glass-panel"
+                                        style={{
+                                            position: 'absolute',
+                                            bottom: '100%',
+                                            left: 0,
+                                            marginBottom: '0.5rem',
+                                            minWidth: '220px',
+                                            padding: '0.5rem',
+                                            borderRadius: '0.5rem',
+                                            border: '1px solid var(--border)',
+                                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
+                                        }}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                fileInputRef.current?.click();
+                                                setShowPlusMenu(false);
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem 1rem',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                borderRadius: '0.375rem',
+                                                color: 'inherit',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.75rem',
+                                                fontSize: '0.9rem',
+                                                transition: 'background 0.2s',
+                                                textAlign: 'left'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                            </svg>
+                                            <span>Datei anhängen</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setWebSearchEnabled(!webSearchEnabled);
+                                                setShowPlusMenu(false);
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem 1rem',
+                                                background: webSearchEnabled ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                                border: 'none',
+                                                borderRadius: '0.375rem',
+                                                color: 'inherit',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.75rem',
+                                                fontSize: '0.9rem',
+                                                transition: 'background 0.2s',
+                                                textAlign: 'left'
+                                            }}
+                                            onMouseEnter={(e) => !webSearchEnabled && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+                                            onMouseLeave={(e) => !webSearchEnabled && (e.currentTarget.style.background = 'transparent')}
+                                        >
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="11" cy="11" r="8" />
+                                                <path d="m21 21-4.35-4.35" />
+                                            </svg>
+                                            <span>{webSearchEnabled ? 'Web Search aktiv' : 'Web Search'}</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Hidden File Input */}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                onChange={handleFileSelect}
+                                style={{ display: 'none' }}
+                            />
+
+                            <textarea
+                                ref={inputRef}
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                onPaste={handlePaste}
+                                placeholder={currentProjectName ? `Nachricht im Projekt "${currentProjectName}"...` : "Nachricht an Valurion AI..."}
+                                disabled={isLoading || isUploading}
+                                style={{
+                                    width: '100%',
+                                    padding: '1rem 3rem 1rem 3.5rem',
+                                    borderRadius: '9999px',
+                                    background: 'var(--card)',
+                                    border: '1px solid var(--border)',
+                                    color: 'inherit',
+                                    fontSize: '1rem',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                                    outline: 'none'
+                                }}
+                            />
+                            <button
+                                onClick={handleSend}
+                                disabled={(!input.trim() && attachments.length === 0) || isLoading || isUploading}
+                                style={{
+                                    position: 'absolute',
+                                    right: '0.75rem',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: (input.trim() && !isLoading) ? 'hsl(var(--primary))' : 'var(--muted)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: (input.trim() && !isLoading) ? 'pointer' : 'default',
+                                    transition: 'background 0.2s'
+                                }}
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="12" y1="19" x2="12" y2="5" />
+                                    <polyline points="5 12 12 5 19 12" />
+                                </svg>
+                            </button>
+                        </div>
                         <div style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.75rem', color: 'hsl(var(--muted-foreground))' }}>
                             Valurion AI kann Fehler machen. Überprüfen Sie wichtige Informationen.
                         </div>
@@ -1240,7 +1608,13 @@ export default function ChatPage() {
                                         border: '1px solid var(--border)'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
-                                            <span style={{ fontSize: '1.2rem' }}>📄</span>
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                <polyline points="14 2 14 8 20 8" />
+                                                <line x1="16" y1="13" x2="8" y2="13" />
+                                                <line x1="16" y1="17" x2="8" y2="17" />
+                                                <polyline points="10 9 9 9 8 9" />
+                                            </svg>
                                             <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.filename}</span>
                                             <span style={{ fontSize: '0.75rem', color: 'hsl(var(--muted-foreground))' }}>({Math.round(doc.fileSize / 1024)} KB)</span>
                                         </div>

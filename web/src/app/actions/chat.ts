@@ -112,7 +112,7 @@ export async function deleteDocument(documentId: string) {
 
 // --- Chats ---
 
-export async function createChat(title: string, projectId?: string) {
+export async function createChat(title: string, projectId?: string, provider?: string, mode?: string, assistantId?: string) {
     const session = await getSession();
     if (!session) throw new Error('Unauthorized');
 
@@ -121,7 +121,10 @@ export async function createChat(title: string, projectId?: string) {
             title,
             userId: session.userId,
             tenantId: session.tenantId,
-            projectId: projectId || null
+            projectId: projectId || null,
+            provider: provider || null,
+            mode: mode || null,
+            assistantId: assistantId || null
         }
     });
 
@@ -145,6 +148,14 @@ export async function getChats() {
                 take: 1,
                 orderBy: {
                     createdAt: 'asc'
+                }
+            },
+            assistant: {
+                select: {
+                    id: true,
+                    name: true,
+                    icon: true,
+                    gradient: true
                 }
             }
         }

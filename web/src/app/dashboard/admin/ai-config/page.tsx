@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getAIConfigurations, updateAIConfiguration, AIConfigUpdate, getAllUsers, createUser, CreateUserData, updateUserAsAdmin, UpdateUserData, deleteUser, getTenants, createTenant, updateTenant, deleteTenant, getUsersByTenant, getUserTokenUsage, getTenantTokenUsage, TokenUsageReport, TenantTokenUsageReport } from '@/app/actions/admin';
+import { AssistantManagement } from '@/components/AssistantManagement';
 
 type ConfigRow = {
     provider: string;
@@ -98,12 +99,13 @@ export default function AIConfigPage() {
     // Collapsible Sections State
     const [openSections, setOpenSections] = useState({
         aiConfig: true,
+        assistants: false,
         userMgmt: false,
         tenantMgmt: false,
         reporting: false
     });
 
-    const toggleSection = (section: 'aiConfig' | 'userMgmt' | 'tenantMgmt' | 'reporting') => {
+    const toggleSection = (section: 'aiConfig' | 'assistants' | 'userMgmt' | 'tenantMgmt' | 'reporting') => {
         setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
@@ -591,6 +593,33 @@ export default function AIConfigPage() {
                                 {isSaving ? 'Speichert...' : 'Änderungen speichern'}
                             </button>
                         </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Assistants Management Section */}
+            <div className="glass-panel" style={{ padding: '0', overflow: 'hidden', marginBottom: '2rem' }}>
+                <div
+                    onClick={() => toggleSection('assistants')}
+                    style={{
+                        padding: '1.5rem 2rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        background: 'rgba(255,255,255,0.02)',
+                        borderBottom: openSections.assistants ? '1px solid var(--border)' : 'none'
+                    }}
+                >
+                    <h2 style={{ fontSize: '1.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                        <span>🤖</span> KI-Assistenten verwalten
+                    </h2>
+                    <span style={{ transform: openSections.assistants ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>▼</span>
+                </div>
+
+                {openSections.assistants && (
+                    <div style={{ animation: 'slideIn 0.3s ease-out' }}>
+                        <AssistantManagement />
                     </div>
                 )}
             </div>

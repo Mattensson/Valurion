@@ -526,3 +526,131 @@ export async function getTenantTokenUsage(month?: number, year?: number): Promis
 
     return report.sort((a, b) => b.totalTokens - a.totalTokens);
 }
+
+// ===== Assistant Management =====
+
+export type AssistantData = {
+    id?: string;
+    name: string;
+    icon: string;
+    gradient: string;
+    description: string;
+    category: string;
+    systemPrompt: string;
+    provider: string;
+    modelId: string;
+    temperature: number;
+    isActive?: boolean;
+    sortOrder?: number;
+};
+
+export async function getAssistants() {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    return await prisma.assistant.findMany({
+        orderBy: [
+            { isActive: 'desc' },
+            { sortOrder: 'asc' }
+        ]
+    });
+}
+
+export async function getActiveAssistants() {
+    // Public function - anyone can see active assistants
+    return await prisma.assistant.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' }
+    });
+}
+
+export async function createAssistant(data: AssistantData) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    try {
+        const assistant = await prisma.assistant.create({
+            data: {
+                name: data.name,
+                icon: data.icon,
+                gradient: data.gradient,
+                description: data.description,
+                category: data.category,
+                systemPrompt: data.systemPrompt,
+                provider: data.provider,
+                modelId: data.modelId,
+                temperature: data.temperature,
+                isActive: data.isActive ?? true,
+                sortOrder: data.sortOrder ?? 0
+            }
+        });
+
+        revalidatePath('/dashboard/admin/ai-config');
+        revalidatePath('/dashboard/assistants');
+        return { success: true, assistant };
+    } catch (error) {
+        console.error('Failed to create assistant:', error);
+        return { success: false, error: 'Fehler beim Erstellen des Assistenten' };
+    }
+}
+
+export async function updateAssistant(data: AssistantData) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    if (!data.id) {
+        return { success: false, error: 'ID erforderlich' };
+    }
+
+    try {
+        const assistant = await prisma.assistant.update({
+            where: { id: data.id },
+            data: {
+                name: data.name,
+                icon: data.icon,
+                gradient: data.gradient,
+                description: data.description,
+                category: data.category,
+                systemPrompt: data.systemPrompt,
+                provider: data.provider,
+                modelId: data.modelId,
+                temperature: data.temperature,
+                isActive: data.isActive,
+                sortOrder: data.sortOrder
+            }
+        });
+
+        revalidatePath('/dashboard/admin/ai-config');
+        revalidatePath('/dashboard/assistants');
+        return { success: true, assistant };
+    } catch (error) {
+        console.error('Failed to update assistant:', error);
+        return { success: false, error: 'Fehler beim Aktualisieren des Assistenten' };
+    }
+}
+
+export async function deleteAssistant(id: string) {
+    const session = await getSession();
+    if (!session || (session.role !== 'ADMIN' && session.role !== 'SUPER_ADMIN')) {
+        throw new Error('Unauthorized');
+    }
+
+    try {
+        await prisma.assistant.delete({
+            where: { id }
+        });
+
+        revalidatePath('/dashboard/admin/ai-config');
+        revalidatePath('/dashboard/assistants');
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to delete assistant:', error);
+        return { success: false, error: 'Fehler beim Löschen des Assistenten' };
+    }
+}

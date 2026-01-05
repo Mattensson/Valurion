@@ -115,6 +115,12 @@ model Chat {
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id])
 
+  // New fields for chat context
+  provider    String? // "OpenAI" or "Gemini"
+  mode        String? // "Fast" or "Thinking"
+  assistantId String?
+  assistant   Assistant? @relation(fields: [assistantId], references: [id])
+
   messages  Message[]
 
   createdAt DateTime @default(now())
@@ -250,4 +256,30 @@ model Protocol {
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// AI Assistant Configuration
+model Assistant {
+  id          String   @id @default(uuid())
+  name        String
+  icon        String   // Emoji icon for the assistant
+  gradient    String   // CSS gradient for the card
+  description String   @db.Text
+  category    String   // e.g., "Legal", "Business", "Analytics"
+  
+  // AI Configuration
+  systemPrompt String  @db.Text
+  provider     String  // "OpenAI" or "Gemini"
+  modelId      String  // Specific model to use
+  temperature  Float   @default(0.7)
+  
+  isActive     Boolean @default(true)
+  sortOrder    Int     @default(0)
+
+  chats        Chat[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([isActive, sortOrder])
 }

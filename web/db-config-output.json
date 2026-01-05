@@ -1,0 +1,30 @@
+[
+  {
+    "id": "6b98a9bb-1a58-4c06-961e-f12805a9bb84",
+    "provider": "OpenAI",
+    "mode": "fast",
+    "modelId": "gpt-4o-mini",
+    "updatedAt": "2026-01-04T23:15:54.677Z"
+  },
+  {
+    "id": "f3d237fe-8f72-4414-8ec9-a24c7cf88815",
+    "provider": "OpenAI",
+    "mode": "thinking",
+    "modelId": "gpt-4o",
+    "updatedAt": "2026-01-04T23:15:54.699Z"
+  },
+  {
+    "id": "6adc8ce7-2e3d-44f1-a246-16b246415d04",
+    "provider": "Gemini",
+    "mode": "fast",
+    "modelId": "gemini-1.5-flash",
+    "updatedAt": "2026-01-04T23:15:54.703Z"
+  },
+  {
+    "id": "c622ab96-abbe-403f-bfdf-90b12445cb1e",
+    "provider": "Gemini",
+    "mode": "thinking",
+    "modelId": "gemini-1.5-pro",
+    "updatedAt": "2026-01-04T23:15:54.706Z"
+  }
+]

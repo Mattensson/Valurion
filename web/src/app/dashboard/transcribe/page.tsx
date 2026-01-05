@@ -599,7 +599,11 @@ export default function TranscribePage() {
                         {file && (
                             <div style={{ textAlign: 'center' }}>
                                 <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                                    <div>🎵</div>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#01b4d8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 18V5l12-2v13" />
+                                        <circle cx="6" cy="18" r="3" />
+                                        <circle cx="18" cy="16" r="3" />
+                                    </svg>
                                     <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>{file.name}</div>
                                     <button onClick={() => { setFile(null); setTranscription(''); setError(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--muted-foreground))' }}>✕</button>
                                 </div>
@@ -652,7 +656,18 @@ export default function TranscribePage() {
                                             justifyContent: 'center',
                                             borderRadius: '6px'
                                         }}>
-                                            {t.source === 'RECORDING' ? '🎤' : '📁'}
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#01b4d8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                {t.source === 'RECORDING' ? (
+                                                    <>
+                                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                                        <line x1="12" y1="19" x2="12" y2="23" />
+                                                        <line x1="8" y1="23" x2="16" y2="23" />
+                                                    </>
+                                                ) : (
+                                                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                                )}
+                                            </svg>
                                         </div>
                                         <div style={{ flex: 1, overflow: 'hidden' }}>
                                             <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -705,14 +720,21 @@ export default function TranscribePage() {
                                         className="btn btn-primary"
                                         style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#01b4d8', border: 'none' }}
                                     >
-                                        📑 Protokoll erstellen
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        Protokoll erstellen
                                     </button>
                                     <button
                                         onClick={copyToClipboard}
                                         className="btn btn-ghost"
                                         style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                                     >
-                                        📋 Kopieren
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
+                                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                                        </svg>
+                                        Kopieren
                                     </button>
                                 </div>
                             </div>
@@ -722,7 +744,10 @@ export default function TranscribePage() {
                         </>
                     ) : (
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.3 }}>
-                            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📝</div>
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem', opacity: 0.3 }}>
+                                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
                             <div style={{ fontSize: '1.25rem', fontWeight: 500 }}>Wählen Sie ein Transkript aus oder starten Sie eine neue Aufnahme</div>
                         </div>
                     )}

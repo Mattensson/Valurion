@@ -156,7 +156,9 @@ function ProtocolContent() {
 
                 {protocols.length === 0 ? (
                     <div className="glass-panel" style={{ padding: '4rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '1.5rem', opacity: 0.5 }}>📭</div>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1.5rem', opacity: 0.5 }}>
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
                         <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>Keine Protokolle vorhanden</h3>
                         <p style={{ color: 'hsl(var(--muted-foreground))', marginBottom: '2rem', maxWidth: '400px' }}>
                             Sie haben noch keine Protokolle erstellt. Starten Sie eine Transkription, um ein Protokoll zu generieren.
@@ -166,7 +168,13 @@ function ProtocolContent() {
                             className="btn btn-primary"
                             style={{ background: '#01b4d8', border: 'none', padding: '0.75rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                         >
-                            🎤 Zur Transkription
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                <line x1="12" y1="19" x2="12" y2="23" />
+                                <line x1="8" y1="23" x2="16" y2="23" />
+                            </svg>
+                            Zur Transkription
                         </button>
                     </div>
                 ) : (
@@ -220,7 +228,9 @@ function ProtocolContent() {
                                         justifyContent: 'center',
                                         fontSize: '1.25rem'
                                     }}>
-                                        📝
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: 'hsl(var(--muted-foreground))' }}>
                                         {new Date(p.createdAt).toLocaleDateString()}
@@ -236,7 +246,13 @@ function ProtocolContent() {
                                 </div>
                                 {p.transcription && (
                                     <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '0.75rem', color: 'hsl(var(--muted-foreground))', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <span>🎤</span> Basierend auf Transkript
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                            <line x1="12" y1="19" x2="12" y2="23" />
+                                            <line x1="8" y1="23" x2="16" y2="23" />
+                                        </svg>
+                                        Basierend auf Transkript
                                     </div>
                                 )}
                             </div>
@@ -323,7 +339,12 @@ function ProtocolContent() {
                                 fontSize: '1.2rem',
                                 color: '#01b4d8'
                             }}>
-                                🎤
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#01b4d8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
                             </div>
                             <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
@@ -357,13 +378,21 @@ function ProtocolContent() {
                         marginBottom: '1rem'
                     }}>
                         <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span>📝</span> PROTOKOLL
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            PROTOKOLL
                         </h3>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             {error && (
                                 <span style={{ color: '#ef4444', fontSize: '0.8rem', marginRight: '0.5rem' }}>
-                                    ⚠️ {error}
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                        <circle cx="12" cy="12" r="10" />
+                                        <line x1="12" y1="8" x2="12" y2="12" />
+                                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                                    </svg>
+                                    {error}
                                 </span>
                             )}
                             {editorData?.transcriptText && (

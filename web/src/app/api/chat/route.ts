@@ -5,6 +5,20 @@ import { searchWeb } from '@/lib/search';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 
+// Polyfills for pdf-parse in Node environment to prevent crash
+if (typeof (global as any).DOMMatrix === 'undefined') {
+    (global as any).DOMMatrix = class DOMMatrix { };
+}
+if (typeof (global as any).ImageData === 'undefined') {
+    (global as any).ImageData = class ImageData { };
+}
+if (typeof (global as any).Path2D === 'undefined') {
+    (global as any).Path2D = class Path2D { };
+}
+
+// Use pdfjs-dist for robust PDF text extraction in Node
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+
 export async function POST(request: NextRequest) {
     const session = await getSession();
     if (!session) {
@@ -12,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        const { messages, provider, mode, temperature, chatId } = await request.json();
+        const { messages, provider, mode, temperature, chatId, systemPrompt } = await request.json();
 
         // Check for Project Context
         let projectContext = "";
@@ -72,11 +86,11 @@ export async function POST(request: NextRequest) {
         let totalTokens = 0;
 
         if (provider === 'OpenAI') {
-            const result = await callOpenAIWithTools(processedMessages, config.modelId, temperature, projectContext);
+            const result = await callOpenAIWithTools(processedMessages, config.modelId, temperature, projectContext, systemPrompt);
             aiResponse = result.content;
             totalTokens = result.tokens;
         } else if (provider === 'Gemini') {
-            const result = await callGeminiWithTools(processedMessages, config.modelId, temperature, projectContext);
+            const result = await callGeminiWithTools(processedMessages, config.modelId, temperature, projectContext, systemPrompt);
             aiResponse = result.content;
             totalTokens = result.tokens;
         } else {
@@ -103,8 +117,12 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// Helper to determine system instruction based on temperature
-function getSystemInstruction(temperature: number): string {
+// Helper to determine system instruction based on temperature or custom prompt
+function getSystemInstruction(temperature: number, customPrompt?: string): string {
+    if (customPrompt) {
+        return customPrompt;
+    }
+
     if (temperature <= 0.2) {
         return "Du bist ein extrem präziser Assistent. Deine Antworten müssen EXTREM KURZ und KNACKIG sein. Beschränke dich auf das absolut Wesentliche. Keine Einleitungen, keine Floskeln. Stichpunkte sind bevorzugt.";
     } else if (temperature <= 0.4) {
@@ -119,7 +137,7 @@ function getSystemInstruction(temperature: number): string {
 }
 
 // OpenAI with Function Calling
-async function callOpenAIWithTools(messages: any[], model: string, temperature: number, projectContext: string = ""): Promise<{ content: string, tokens: number }> {
+async function callOpenAIWithTools(messages: any[], model: string, temperature: number, projectContext: string = "", systemPrompt?: string): Promise<{ content: string, tokens: number }> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error('No OpenAI API key');
 
@@ -142,7 +160,7 @@ async function callOpenAIWithTools(messages: any[], model: string, temperature: 
     }];
 
     // Add system instruction based on temperature and project context
-    const systemInstruction = getSystemInstruction(temperature) + projectContext;
+    const systemInstruction = getSystemInstruction(temperature, systemPrompt) + projectContext;
     let conversationMessages = [
         { role: 'system', content: systemInstruction },
         ...messages
@@ -234,7 +252,7 @@ async function callOpenAIWithTools(messages: any[], model: string, temperature: 
 }
 
 // Gemini with Function Calling
-async function callGeminiWithTools(messages: any[], model: string, temperature: number, projectContext: string = ""): Promise<{ content: string, tokens: number }> {
+async function callGeminiWithTools(messages: any[], model: string, temperature: number, projectContext: string = "", systemPrompt?: string): Promise<{ content: string, tokens: number }> {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('No Gemini API key');
 
@@ -261,6 +279,9 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
         };
     });
 
+    // Determine if tools are supported (Thinking models often don't support tools)
+    const startTools = !model.toLowerCase().includes("thinking");
+
     const tools = [{
         functionDeclarations: [{
             name: 'search_web',
@@ -278,7 +299,7 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
         }]
     }];
 
-    const systemInstructionText = getSystemInstruction(temperature) + projectContext;
+    const systemInstructionText = getSystemInstruction(temperature, systemPrompt) + projectContext;
 
     let conversationContents = [...contents];
     let iterations = 0;
@@ -289,14 +310,22 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
         const bodyObj: any = {
             contents: conversationContents,
             generationConfig: { temperature },
-            tools,
+            // Only add system instruction if not a very old model, but assume yes for now.
+            // Some thinking models prefer system instructions in the prompt, but API supports it usually.
             systemInstruction: {
                 parts: [{ text: systemInstructionText }]
             }
         };
 
+        if (startTools) {
+            bodyObj.tools = tools;
+        }
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        console.log('Gemini Request URL:', url.replace(apiKey, 'HIDDEN_KEY'));
+
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            url,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -307,20 +336,34 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
         if (!response.ok) {
             const error = await response.text();
             console.error('Gemini Error:', error);
-            throw new Error('Gemini request failed');
+            throw new Error(`Gemini request failed: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
 
-        // Track Usage (Gemini format: usageMetadata)
+        // Track Usage
         if (data.usageMetadata && data.usageMetadata.totalTokenCount) {
             totalTokensUsed += data.usageMetadata.totalTokenCount;
         }
 
+        // Safety Check
+        if (!data.candidates || data.candidates.length === 0) {
+            console.error('Gemini No Candidates:', JSON.stringify(data));
+            if (data.promptFeedback && data.promptFeedback.blockReason) {
+                return { content: `[BLOCK] Die Anfrage wurde von der KI-Sicherheitsrichtlinie blockiert. Grund: ${data.promptFeedback.blockReason}`, tokens: totalTokensUsed };
+            }
+            return { content: "Entschuldigung, die KI konnte keine Antwort generieren (leere Antwort).", tokens: totalTokensUsed };
+        }
+
         const candidate = data.candidates[0];
 
-        // Check for function calls
-        if (candidate.content.parts[0].functionCall) {
+        // Ensure content parts exist
+        if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+            return { content: "Leere Antwort von der KI erhalten.", tokens: totalTokensUsed };
+        }
+
+        // Check for function calls (only if we sent tools)
+        if (startTools && candidate.content.parts[0].functionCall) {
             const functionCall = candidate.content.parts[0].functionCall;
 
             if (functionCall.name === 'search_web') {
@@ -341,53 +384,98 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
                 });
 
                 iterations++;
+            } else {
+                // Unknown function or just return text
+                return { content: "Funktionsaufruf nicht erkannt.", tokens: totalTokensUsed };
             }
         } else {
             // No function call, return final answer
-            return { content: candidate.content.parts[0].text, tokens: totalTokensUsed };
+            // Handle cases where thinking models return multiple parts (thoughts + text)
+            const textParts = candidate.content.parts.filter((p: any) => p.text).map((p: any) => p.text).join('\n');
+            return { content: textParts || 'Keine Textantwort erhalten', tokens: totalTokensUsed };
         }
     }
 
     // Fallback
-    const lastContent = conversationContents[conversationContents.length - 1];
-    return { content: lastContent.parts[0].text || 'Keine Antwort erhalten', tokens: totalTokensUsed };
+    // Ensure we have a valid last content
+    if (conversationContents.length > 0 && conversationContents[conversationContents.length - 1].parts) {
+        const lastParts = conversationContents[conversationContents.length - 1].parts.filter((p: any) => p.text).map((p: any) => p.text).join('\n');
+        return { content: lastParts || 'Keine Antwort erhalten', tokens: totalTokensUsed };
+    }
+
+    return { content: 'Keine Antwort erhalten', tokens: totalTokensUsed };
 }
 
-// Helper to process messages and extract local images
+// Helper to process messages and extract local images and PDF text
 async function processMessages(messages: any[]) {
     return Promise.all(messages.map(async (msg) => {
         if (msg.role === 'user' && typeof msg.content === 'string') {
-            const imageRegex = /!\[.*?\]\((.*?)\)/g;
-            const images = [];
-            let match;
+            const linkRegex = /!?\[.*?\]\((.*?)\)/g;
+            const images: any[] = [];
+            let processedText = msg.content;
 
-            // We only look for local uploads to process
-            while ((match = imageRegex.exec(msg.content)) !== null) {
-                const url = match[1];
-                if (url.startsWith('/uploads/')) {
+            const matches = [...msg.content.matchAll(linkRegex)];
+
+            for (const m of matches) {
+                const url = m[1];
+                if (url && url.startsWith('/uploads/')) {
                     try {
                         const filename = url.split('/').pop();
                         if (filename) {
                             const filePath = join(process.cwd(), 'public', 'uploads', filename);
                             const fileBuffer = await readFile(filePath);
-                            const base64 = fileBuffer.toString('base64');
                             const ext = filename.split('.').pop()?.toLowerCase();
-                            const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/webp';
 
-                            images.push({ mimeType, data: base64 });
+                            const SUPPORTED_IMAGES = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+
+                            if (ext && SUPPORTED_IMAGES.includes(ext)) {
+                                const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+                                images.push({ mimeType, data: fileBuffer.toString('base64') });
+                                processedText = processedText.replace(m[0], '');
+                            }
+                            else if (ext === 'pdf') {
+                                try {
+                                    const data = new Uint8Array(fileBuffer);
+                                    const loadingTask = pdfjsLib.getDocument({ data });
+                                    const pdfDocument = await loadingTask.promise;
+                                    let pdfText = '';
+
+                                    for (let i = 1; i <= pdfDocument.numPages; i++) {
+                                        const page = await pdfDocument.getPage(i);
+                                        const textContent = await page.getTextContent();
+                                        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+                                        pdfText += pageText + '\n';
+                                    }
+
+                                    pdfText = pdfText.replace(/\n\s*\n/g, '\n').trim();
+                                    if (pdfText.length > 50000) pdfText = pdfText.substring(0, 50000) + "\n... (Text gekürzt)";
+                                    processedText += `\n\n--- INHALT DATEI '${filename}' ---\n${pdfText}\n--- ENDE DATEI INHALT ---\n`;
+                                } catch (pdfError) {
+                                    console.error('PDF parsing error:', pdfError);
+                                }
+                            }
                         }
                     } catch (e) {
-                        console.error('Failed to load image for AI processing:', url);
+                        console.error('Failed to process file:', url);
                     }
                 }
             }
+
+            processedText = processedText.trim();
+            if (!processedText && images.length > 0) processedText = "Bild analysieren:";
 
             if (images.length > 0) {
                 return {
                     ...msg,
                     hasImages: true,
                     images,
-                    cleanText: msg.content.replace(imageRegex, '').trim() || "Bild analysieren:"
+                    cleanText: processedText,
+                    content: processedText
+                };
+            } else if (processedText !== msg.content) {
+                return {
+                    ...msg,
+                    content: processedText
                 };
             }
         }

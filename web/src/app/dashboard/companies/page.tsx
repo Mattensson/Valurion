@@ -589,7 +589,12 @@ export default function CompaniesPage() {
 
                         <div className={styles.strategyInfo}>
                             <p className={styles.infoBox}>
-                                💡 <strong>Hinweis:</strong> Diese Strategien werden automatisch als Kontext in allen
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '0.5rem' }}>
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="12" y1="16" x2="12" y2="12" />
+                                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                                </svg>
+                                <strong>Hinweis:</strong> Diese Strategien werden automatisch als Kontext in allen
                                 Chats und bei der Protokollerstellung verwendet, um sicherzustellen, dass die KI
                                 Ihre Unternehmensziele berücksichtigt.
                             </p>
@@ -628,14 +633,28 @@ export default function CompaniesPage() {
                                                                     onClick={() => handleToggleStrategy(strategy.id, strategy.isActive)}
                                                                     title={strategy.isActive ? 'Deaktivieren' : 'Aktivieren'}
                                                                 >
-                                                                    {strategy.isActive ? '👁️' : '👁️‍🗨️'}
+                                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                        {strategy.isActive ? (
+                                                                            <>
+                                                                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                                                <circle cx="12" cy="12" r="3" />
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                                                                                <line x1="1" y1="1" x2="23" y2="23" />
+                                                                            </>
+                                                                        )}
+                                                                    </svg>
                                                                 </button>
                                                                 <button
                                                                     className={styles.btnDelete}
                                                                     onClick={() => handleDeleteStrategy(strategy.id)}
                                                                     title="Löschen"
                                                                 >
-                                                                    🗑️
+                                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
+                                                                    </svg>
                                                                 </button>
                                                             </div>
                                                         )}
