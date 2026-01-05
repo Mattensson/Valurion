@@ -75,16 +75,14 @@ async function main() {
             sortOrder: 5
         }
     ];
+    console.log(`Clearing existing assistants...`);
+    await prisma.assistant.deleteMany({}); // Clear table to ensure exact match
+
     console.log(`Start seeding assistants...`);
 
     for (const a of assistants) {
-        const exists = await prisma.assistant.findFirst({ where: { name: a.name } });
-        if (!exists) {
-            await prisma.assistant.create({ data: a });
-            console.log(`Created assistant: ${a.name} `);
-        } else {
-            console.log(`Assistant already exists: ${a.name} `);
-        }
+        await prisma.assistant.create({ data: a });
+        console.log(`Created assistant: ${a.name}`);
     }
 
     console.log(`Seeding finished.`);
