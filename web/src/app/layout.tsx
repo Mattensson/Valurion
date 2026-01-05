@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Valurion - Secure Business Chatbot",
-  description: "Entscheidungsunterstützung für Vertrieb & Einkauf",
+  title: "Valurion - Secure AI Suite",
+  description: "Design Value. Empower People.",
 };
 
 export default function RootLayout({
