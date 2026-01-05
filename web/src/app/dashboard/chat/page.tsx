@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createChat, getChats, getChat, saveMessage, deleteChat, createProject, getProjects, deleteProject, updateProject, getProjectDocuments, deleteDocument } from '@/app/actions/chat';
+import { getDocuments } from '@/app/actions/documents';
 
 const renderContent = (content: string) => {
     // Split by markdown images and bold text
@@ -81,11 +82,18 @@ export default function ChatPage() {
         }
     }, [searchParams]);
 
-    // Chat State
+    // Chat State (Managed by React useState)
     type Message = { role: 'user' | 'assistant'; content: string };
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [attachments, setAttachments] = useState<{ file: File; preview: string }[]>([]);
+
+
+    // Attachments State
+    type Attachment =
+        | { type: 'file'; file: File; preview: string; id: string }
+        | { type: 'repo'; doc: any; id: string };
+
+    const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [isUploading, setIsUploading] = useState(false);
 
     // Saved Chats & Projects
@@ -127,9 +135,16 @@ export default function ChatPage() {
     // Active Project Context for new chats
     const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
+    // Document Picker State
+    const [showDocPicker, setShowDocPicker] = useState(false);
+    const [docPickerTab, setDocPickerTab] = useState<'my' | 'shared'>('my');
+    const [availableDocs, setAvailableDocs] = useState<{ myDocuments: any[], sharedDocuments: any[] } | null>(null);
+    const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+
     // Plus Menu State
     const [showPlusMenu, setShowPlusMenu] = useState(false);
     const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -179,23 +194,24 @@ export default function ChatPage() {
                     reader.onload = (event) => {
                         if (event.target?.result) {
                             setAttachments(prev => [...prev, {
+                                type: 'file',
                                 file: file,
-                                preview: event.target!.result as string
+                                preview: event.target!.result as string,
+                                id: Math.random().toString(36).substring(7)
                             }]);
                         }
                     };
                     reader.readAsDataURL(file);
                 } else {
-                    // For non-images, we don't generate a base64 preview, but we store the file
-                    // The UI should handle displaying a generic file icon based on !preview
                     setAttachments(prev => [...prev, {
+                        type: 'file',
                         file: file,
-                        preview: '' // Empty string indicates no image preview
+                        preview: '',
+                        id: Math.random().toString(36).substring(7)
                     }]);
                 }
             });
 
-            // Reset input value to allow selecting the same file again if needed
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
@@ -347,8 +363,10 @@ export default function ChatPage() {
                     reader.onload = (event) => {
                         if (event.target?.result) {
                             setAttachments(prev => [...prev, {
+                                type: 'file',
                                 file: blob,
-                                preview: event.target!.result as string
+                                preview: event.target!.result as string,
+                                id: Math.random().toString(36).substring(7)
                             }]);
                         }
                     };
@@ -358,8 +376,88 @@ export default function ChatPage() {
         }
     };
 
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Nur setIsDragging(false) wenn wir wirklich den Container verlassen
+        // Nicht bei Hover über Kindelemente
+        if (e.currentTarget === e.target) {
+            setIsDragging(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        const files = Array.from(e.dataTransfer.files);
+
+        if (files.length > 0) {
+            files.forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        if (event.target?.result) {
+                            setAttachments(prev => [...prev, {
+                                type: 'file',
+                                file: file,
+                                preview: event.target!.result as string,
+                                id: Math.random().toString(36).substring(7)
+                            }]);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    setAttachments(prev => [...prev, {
+                        type: 'file',
+                        file: file,
+                        preview: '',
+                        id: Math.random().toString(36).substring(7)
+                    }]);
+                }
+            });
+        }
+    };
+
     const removeAttachment = (index: number) => {
         setAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleOpenDocPicker = async () => {
+        setShowDocPicker(true);
+        setShowPlusMenu(false);
+        if (!availableDocs) {
+            setIsLoadingDocs(true);
+            try {
+                const docs = await getDocuments();
+                setAvailableDocs(docs as any);
+            } catch (e) {
+                console.error("Failed to load documents", e);
+            } finally {
+                setIsLoadingDocs(false);
+            }
+        }
+    };
+
+    const handleSelectRepoDoc = (doc: any) => {
+        // Add to attachments list instead of modifying input text
+        setAttachments(prev => [...prev, {
+            type: 'repo',
+            doc: doc,
+            id: doc.id // Use doc ID as unique ID
+        }]);
+
+        setShowDocPicker(false);
+        // Focus back on input
+        inputRef.current?.focus();
     };
 
     const handleSend = async () => {
@@ -369,9 +467,13 @@ export default function ChatPage() {
         setIsUploading(true);
 
         try {
-            // Upload attachments if any
-            if (attachments.length > 0) {
-                const uploadPromises = attachments.map(async (att) => {
+            const filesToUpload = attachments.filter(a => a.type === 'file') as { type: 'file', file: File, id: string }[];
+            const repoDocs = attachments.filter(a => a.type === 'repo') as { type: 'repo', doc: any, id: string }[];
+
+            // Upload new files
+            let uploadedUrls: string[] = [];
+            if (filesToUpload.length > 0) {
+                const uploadPromises = filesToUpload.map(async (att) => {
                     const formData = new FormData();
                     formData.append('file', att.file);
 
@@ -390,12 +492,21 @@ export default function ChatPage() {
                     }
                 });
 
-                const uploadedUrls = await Promise.all(uploadPromises);
-                if (finalContent.trim()) finalContent += '\n\n';
-                finalContent += uploadedUrls.join('\n');
-
-                setAttachments([]);
+                uploadedUrls = await Promise.all(uploadPromises);
             }
+
+            // Process repo docs (just create markdown links)
+            const repoLinks = repoDocs.map(att => `[${att.doc.filename}](/api/documents/${att.doc.id})`);
+
+            // Combine all
+            const allAttachments = [...uploadedUrls, ...repoLinks];
+
+            if (allAttachments.length > 0) {
+                if (finalContent.trim()) finalContent += '\n\n';
+                finalContent += allAttachments.join('\n');
+            }
+
+            setAttachments([]);
         } catch (error) {
             console.error('Failed to upload attachments', error);
             alert('Fehler beim Hochladen der Bilder.');
@@ -818,7 +929,17 @@ export default function ChatPage() {
             </div>
 
             {/* Main Chat Area */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            <div
+                style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    position: 'relative'
+                }}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+            >
 
                 {/* Top Bar */}
                 <div style={{
@@ -1132,45 +1253,80 @@ export default function ChatPage() {
                         marginBottom: attachments.length > 0 ? '0.5rem' : '0'
                     }}>
                         {attachments.map((att, index) => (
-                            <div key={index} style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '0.5rem', border: '1px solid var(--border)', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
-                                {att.preview ? (
-                                    <img
-                                        src={att.preview}
-                                        alt={att.file.name}
-                                        style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            objectFit: 'cover'
-                                        }}
-                                    />
-                                ) : (
-                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'hsl(var(--muted-foreground))' }} title={att.file.name}>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                            <polyline points="14 2 14 8 20 8" />
-                                        </svg>
-                                    </div>
-                                )}
+                            <div key={index} style={{
+                                position: 'relative',
+                                width: '64px',
+                                height: '64px'
+                            }}>
+                                <div style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    borderRadius: '0.5rem',
+                                    border: '1px solid var(--border)',
+                                    overflow: 'hidden',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    {att.type === 'file' && att.preview ? (
+                                        <img
+                                            src={att.preview}
+                                            alt={att.file.name}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        />
+                                    ) : (
+                                        <>
+                                            <div style={{ color: 'hsl(var(--primary))', marginBottom: '4px' }}>
+                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    {(att.type === 'repo' ? att.doc.mimeType : att.file.type).includes('image') ? (
+                                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                                    ) : (
+                                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                    )}
+                                                </svg>
+                                            </div>
+                                            <div style={{ fontSize: '8px', textAlign: 'center', width: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {att.type === 'repo' ? att.doc.filename : att.file.name}
+                                            </div>
+                                            {att.type === 'repo' && (
+                                                <div style={{
+                                                    position: 'absolute', bottom: '2px', right: '2px',
+                                                    width: '12px', height: '12px', borderRadius: '50%', background: '#22c55e',
+                                                    border: '2px solid var(--background)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                }} title="Bereits hochgeladen">
+                                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="20 6 9 17 4 12" />
+                                                    </svg>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
                                 <button
                                     onClick={() => removeAttachment(index)}
                                     style={{
                                         position: 'absolute',
                                         top: '-6px',
                                         right: '-6px',
-                                        background: 'rgba(0,0,0,0.6)',
+                                        background: 'hsl(var(--destructive))',
                                         color: 'white',
-                                        border: 'none',
+                                        border: '2px solid var(--background)',
                                         borderRadius: '50%',
-                                        width: '18px',
-                                        height: '18px',
+                                        width: '20px',
+                                        height: '20px',
                                         fontSize: '12px',
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        justifyContent: 'center'
+                                        justifyContent: 'center',
+                                        zIndex: 10,
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                                     }}
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                         <line x1="18" y1="6" x2="6" y2="18" />
                                         <line x1="6" y1="6" x2="18" y2="18" />
                                     </svg>
@@ -1267,6 +1423,36 @@ export default function ChatPage() {
                                         </button>
                                         <button
                                             type="button"
+                                            onClick={handleOpenDocPicker}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem 1rem',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                borderRadius: '0.375rem',
+                                                color: 'inherit',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.75rem',
+                                                fontSize: '0.9rem',
+                                                transition: 'background 0.2s',
+                                                textAlign: 'left'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                            <span>Aus Dokumenten wählen</span>
+                                        </button>
+                                        <button
+                                            type="button"
                                             onClick={() => {
                                                 setWebSearchEnabled(!webSearchEnabled);
                                                 setShowPlusMenu(false);
@@ -1304,6 +1490,7 @@ export default function ChatPage() {
                                 ref={fileInputRef}
                                 type="file"
                                 multiple
+                                accept="image/*,.pdf,.docx,.doc"
                                 onChange={handleFileSelect}
                                 style={{ display: 'none' }}
                             />
@@ -1374,6 +1561,77 @@ export default function ChatPage() {
                         animation: bounce 1.4s infinite ease-in-out both;
                     }
                 `}</style>
+
+                {/* Drag & Drop Overlay */}
+                {isDragging && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(1, 180, 216, 0.1)',
+                            backdropFilter: 'blur(8px)',
+                            border: '3px dashed #01b4d8',
+                            borderRadius: '1rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 9999,
+                            pointerEvents: 'none',
+                            margin: '1rem'
+                        }}
+                    >
+                        <div
+                            style={{
+                                background: 'linear-gradient(135deg, #01b4d8 0%, #0891b2 100%)',
+                                width: '80px',
+                                height: '80px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginBottom: '1.5rem',
+                                boxShadow: '0 20px 40px rgba(1, 180, 216, 0.4)',
+                                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                            }}
+                        >
+                            <svg
+                                width="40"
+                                height="40"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17 8 12 3 7 8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                        </div>
+                        <h3
+                            style={{
+                                fontSize: '1.5rem',
+                                fontWeight: 700,
+                                color: '#01b4d8',
+                                marginBottom: '0.5rem',
+                                textShadow: '0 2px 10px rgba(1, 180, 216, 0.3)'
+                            }}
+                        >
+                            Dateien hier ablegen
+                        </h3>
+                        <p
+                            style={{
+                                fontSize: '0.95rem',
+                                color: 'hsl(var(--muted-foreground))',
+                                opacity: 0.9
+                            }}
+                        >
+                            Unterstützt: Bilder, PDFs, Word-Dokumente (.docx/.doc)
+                        </p>
+                    </div>
+                )}
 
             </div>
 
@@ -1665,6 +1923,225 @@ export default function ChatPage() {
                             >
                                 Änderungen speichern
                             </button>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Project Delete Confirmation Modal */}
+            {deleteProjectModalOpen && (
+                <>
+                    <div
+                        style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(0,0,0,0.3)',
+                            zIndex: 9998
+                        }}
+                        onClick={() => {
+                            setDeleteProjectModalOpen(false);
+                            setProjectToDelete(null);
+                        }}
+                    />
+                    <div
+                        style={{
+                            position: 'fixed',
+                            left: `${deleteModalPosition.x}px`,
+                            top: `${deleteModalPosition.y}px`,
+                            transform: 'translate(-50%, -50%)',
+                            background: 'hsl(var(--background))',
+                            border: '1px solid var(--border)',
+                            borderRadius: '0.75rem',
+                            padding: '1.5rem',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+                            zIndex: 9999,
+                            minWidth: '320px',
+                            maxWidth: '400px'
+                        }}
+                    >
+                        <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.5rem', color: 'hsl(var(--foreground))' }}>
+                            Projekt löschen?
+                        </h3>
+                        <p style={{ fontSize: '0.875rem', color: 'hsl(var(--muted-foreground))', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+                            Projekt wirklich löschen? Alle zugehörigen Chats verlieren ihre Zuordnung.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button
+                                className="btn btn-ghost"
+                                onClick={() => {
+                                    setDeleteProjectModalOpen(false);
+                                    setProjectToDelete(null);
+                                }}
+                                style={{ fontSize: '0.875rem', fontWeight: 500 }}
+                            >
+                                Abbrechen
+                            </button>
+                            <button
+                                className="btn"
+                                onClick={confirmDeleteProject}
+                                style={{
+                                    fontSize: '0.875rem',
+                                    fontWeight: 600,
+                                    background: '#ef4444',
+                                    color: 'white',
+                                    border: 'none'
+                                }}
+                            >
+                                Löschen
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Document Picker Modal */}
+            {showDocPicker && (
+                <>
+                    <div
+                        style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(0,0,0,0.4)',
+                            zIndex: 9998,
+                            backdropFilter: 'blur(4px)'
+                        }}
+                        onClick={() => setShowDocPicker(false)}
+                    />
+                    <div className="glass-panel"
+                        style={{
+                            position: 'fixed',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '100%',
+                            maxWidth: '600px',
+                            height: '600px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            borderRadius: '1rem',
+                            border: '1px solid var(--border)',
+                            zIndex: 9999,
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Dokument auswählen</h2>
+                            <button onClick={() => setShowDocPicker(false)} className="btn btn-ghost" style={{ padding: '0.25rem' }}>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Tabs */}
+                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
+                            <button
+                                onClick={() => setDocPickerTab('my')}
+                                style={{
+                                    flex: 1,
+                                    padding: '1rem',
+                                    background: docPickerTab === 'my' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    border: 'none',
+                                    borderBottom: docPickerTab === 'my' ? '2px solid hsl(var(--primary))' : '2px solid transparent',
+                                    color: docPickerTab === 'my' ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
+                                    fontWeight: docPickerTab === 'my' ? 600 : 400,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Meine Dateien
+                            </button>
+                            <button
+                                onClick={() => setDocPickerTab('shared')}
+                                style={{
+                                    flex: 1,
+                                    padding: '1rem',
+                                    background: docPickerTab === 'shared' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    border: 'none',
+                                    borderBottom: docPickerTab === 'shared' ? '2px solid hsl(var(--primary))' : '2px solid transparent',
+                                    color: docPickerTab === 'shared' ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
+                                    fontWeight: docPickerTab === 'shared' ? 600 : 400,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Geteilt
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+                            {isLoadingDocs ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem', color: 'hsl(var(--muted-foreground))' }}>
+                                    Lade Dokumente...
+                                </div>
+                            ) : !availableDocs ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: 'hsl(var(--muted-foreground))' }}>Fehler beim Laden</div>
+                            ) : (
+                                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                    {(docPickerTab === 'my' ? availableDocs.myDocuments : availableDocs.sharedDocuments).length === 0 && (
+                                        <div style={{ textAlign: 'center', padding: '2rem', color: 'hsl(var(--muted-foreground))', fontStyle: 'italic' }}>
+                                            Keine Dateien gefunden.
+                                        </div>
+                                    )}
+
+                                    {(docPickerTab === 'my' ? availableDocs.myDocuments : availableDocs.sharedDocuments).map((doc: any) => (
+                                        <div
+                                            key={doc.id}
+                                            onClick={() => handleSelectRepoDoc(doc)}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '1rem',
+                                                padding: '0.75rem',
+                                                borderRadius: '0.5rem',
+                                                background: 'rgba(255,255,255,0.03)',
+                                                border: '1px solid var(--border)',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                                userSelect: 'none'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                                        >
+                                            <div style={{
+                                                width: '40px', height: '40px',
+                                                borderRadius: '8px',
+                                                background: 'hsl(var(--muted))',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                color: 'hsl(var(--muted-foreground))'
+                                            }}>
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                    <polyline points="14 2 14 8 20 8" />
+                                                </svg>
+                                            </div>
+                                            <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.filename}</div>
+                                                <div style={{ fontSize: '0.8rem', color: 'hsl(var(--muted-foreground))', display: 'flex', gap: '0.5rem' }}>
+                                                    <span>{Math.round(doc.fileSize / 1024)} KB</span>
+                                                    <span>•</span>
+                                                    <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                                    {doc.uploaderName !== 'Me' && (
+                                                        <>
+                                                            <span>•</span>
+                                                            <span>von {doc.uploaderName}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div style={{ color: 'hsl(var(--primary))' }}>
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <circle cx="12" cy="12" r="10" />
+                                                    <line x1="12" y1="8" x2="12" y2="16" />
+                                                    <line x1="8" y1="12" x2="16" y2="12" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>

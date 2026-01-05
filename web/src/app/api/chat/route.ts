@@ -4,17 +4,8 @@ import { prisma } from '@/lib/db';
 import { searchWeb } from '@/lib/search';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-
-// Polyfills for pdf-parse in Node environment to prevent crash
-if (typeof (global as any).DOMMatrix === 'undefined') {
-    (global as any).DOMMatrix = class DOMMatrix { };
-}
-if (typeof (global as any).ImageData === 'undefined') {
-    (global as any).ImageData = class ImageData { };
-}
-if (typeof (global as any).Path2D === 'undefined') {
-    (global as any).Path2D = class Path2D { };
-}
+import { extractPdfData } from '@/lib/pdf-engine';
+import { extractDocxData } from '@/lib/docx-engine';
 
 // Use pdfjs-dist for robust PDF text extraction in Node
 // pdfjs-dist will be lazy loaded in processMessages
@@ -61,7 +52,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const processedMessages = await processMessages(messages);
+        const processedMessages = await processMessages(messages, provider);
 
         console.log('Chat request:', { provider, mode, temperature, messageCount: messages.length });
 
@@ -407,7 +398,7 @@ async function callGeminiWithTools(messages: any[], model: string, temperature: 
 }
 
 // Helper to process messages and extract local images and PDF text
-async function processMessages(messages: any[]) {
+async function processMessages(messages: any[], provider: string = 'OpenAI') {
     return Promise.all(messages.map(async (msg) => {
         if (msg.role === 'user' && typeof msg.content === 'string') {
             const linkRegex = /!?\[.*?\]\((.*?)\)/g;
@@ -418,46 +409,62 @@ async function processMessages(messages: any[]) {
 
             for (const m of matches) {
                 const url = m[1];
+
+                // 1. Handle public/uploads (Direct Uploads in Chat)
                 if (url && url.startsWith('/uploads/')) {
                     try {
                         const filename = url.split('/').pop();
                         if (filename) {
                             const filePath = join(process.cwd(), 'public', 'uploads', filename);
-                            const fileBuffer = await readFile(filePath);
+                            await processFileAttachment(filePath, filename, images, (text) => {
+                                processedText += text;
+                            }, provider);
+                            // Remove the image link from text if it was an image, to avoid confusing the model? 
+                            // Actually existing logic removed it for images but not PDFs. 
+                            // We will follow the pattern inside processFileAttachment or handle removal here.
+
+                            // Original logic removed the markdown link for images:
                             const ext = filename.split('.').pop()?.toLowerCase();
-
                             const SUPPORTED_IMAGES = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
-
                             if (ext && SUPPORTED_IMAGES.includes(ext)) {
-                                const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-                                images.push({ mimeType, data: fileBuffer.toString('base64') });
                                 processedText = processedText.replace(m[0], '');
                             }
-                            else if (ext === 'pdf') {
-                                try {
-                                    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-                                    const data = new Uint8Array(fileBuffer);
-                                    const loadingTask = pdfjsLib.getDocument({ data });
-                                    const pdfDocument = await loadingTask.promise;
-                                    let pdfText = '';
+                        }
+                    } catch (e) {
+                        console.error('Failed to process upload file:', url, e);
+                    }
+                }
 
-                                    for (let i = 1; i <= pdfDocument.numPages; i++) {
-                                        const page = await pdfDocument.getPage(i);
-                                        const textContent = await page.getTextContent();
-                                        const pageText = textContent.items.map((item: any) => item.str).join(' ');
-                                        pdfText += pageText + '\n';
-                                    }
+                // 2. Handle /api/documents/ (Repository Files)
+                else if (url && url.includes('/api/documents/')) {
+                    try {
+                        const docId = url.split('/').pop(); // Last part is ID
+                        if (docId) {
+                            const doc = await prisma.document.findUnique({
+                                where: { id: docId }
+                            });
 
-                                    pdfText = pdfText.replace(/\n\s*\n/g, '\n').trim();
-                                    if (pdfText.length > 50000) pdfText = pdfText.substring(0, 50000) + "\n... (Text gekürzt)";
-                                    processedText += `\n\n--- INHALT DATEI '${filename}' ---\n${pdfText}\n--- ENDE DATEI INHALT ---\n`;
-                                } catch (pdfError) {
-                                    console.error('PDF parsing error:', pdfError);
+                            if (!doc) {
+                                console.error(`Document with ID ${docId} not found in database.`);
+                            }
+
+                            if (doc) {
+                                const storageDir = join(process.cwd(), 'storage', 'documents');
+                                const filePath = join(storageDir, doc.storagePath);
+
+                                await processFileAttachment(filePath, doc.filename, images, (text) => {
+                                    processedText += text;
+                                }, provider);
+
+                                // Check if image to remove link
+                                const SUPPORTED_IMAGES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+                                if (SUPPORTED_IMAGES.includes(doc.mimeType)) {
+                                    processedText = processedText.replace(m[0], '');
                                 }
                             }
                         }
                     } catch (e) {
-                        console.error('Failed to process file:', url);
+                        console.error('Failed to process repo file:', url, e);
                     }
                 }
             }
@@ -482,4 +489,83 @@ async function processMessages(messages: any[]) {
         }
         return msg;
     }));
+}
+
+// Reusable helper for file processing
+
+
+// Reusable helper for file processing
+// - Gemini: Native PDF support (send PDF as base64)
+// - OpenAI: Text extraction using pdfjs-dist
+async function processFileAttachment(filePath: string, originalFilename: string, images: any[], appendText: (t: string) => void, provider: string = 'OpenAI') {
+    try {
+        console.log(`Processing attachment: ${filePath} (${originalFilename}) for provider: ${provider}`);
+        const fileBuffer = await readFile(filePath);
+        const ext = originalFilename.split('.').pop()?.toLowerCase();
+
+        // MimeType detection
+        let mimeType = '';
+        if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'webp') mimeType = 'image/webp';
+        else if (ext === 'gif') mimeType = 'image/gif';
+
+        // Images: Always send as base64
+        if (mimeType) {
+            images.push({
+                mimeType,
+                data: fileBuffer.toString('base64'),
+                filename: originalFilename
+            });
+        }
+        // PDFs: Provider-specific handling
+        else if (ext === 'pdf') {
+            if (provider === 'Gemini') {
+                // Gemini: Native PDF processing via inlineData
+                images.push({
+                    mimeType: 'application/pdf',
+                    data: fileBuffer.toString('base64'),
+                    filename: originalFilename
+                });
+                appendText(`\n\n[Analysiere die angehängte PDF-Datei: ${originalFilename}]\n`);
+            } else {
+                // OpenAI: Use Gemini 2.5 Flash for extraction, then pass text to OpenAI
+                try {
+                    const pdfData = await extractPdfData(fileBuffer, { maxCharacters: 50000, includePageNumbers: true });
+                    appendText(`\n\n--- INHALT DATEI '${originalFilename}' ---\n${pdfData.text}\n--- ENDE DATEI INHALT ---\n`);
+                } catch (pdfError: any) {
+                    console.error('PDF extraction error:', pdfError);
+                    appendText(`\n\n[SYSTEM FEHLER: Konnte PDF '${originalFilename}' nicht lesen. Fehler: ${pdfError.message}]\n`);
+                }
+            }
+        }
+        // Word Documents (.docx and .doc): Provider-specific handling
+        else if (ext === 'docx' || ext === 'doc') {
+            if (provider === 'Gemini') {
+                // Gemini: Native Word document processing via inlineData
+                const mimeType = ext === 'doc'
+                    ? 'application/msword'
+                    : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+                images.push({
+                    mimeType,
+                    data: fileBuffer.toString('base64'),
+                    filename: originalFilename
+                });
+                appendText(`\n\n[Analysiere das angehängte Word-Dokument: ${originalFilename}]\n`);
+            } else {
+                // OpenAI: Extract text using docx-engine (mammoth for .docx, Gemini for .doc)
+                try {
+                    const docxData = await extractDocxData(fileBuffer, originalFilename, { maxCharacters: 50000 });
+                    appendText(`\n\n--- INHALT DATEI '${originalFilename}' ---\n${docxData.text}\n--- ENDE DATEI INHALT ---\n`);
+                } catch (docxError: any) {
+                    console.error('DOCX extraction error:', docxError);
+                    appendText(`\n\n[SYSTEM FEHLER: Konnte Word-Dokument '${originalFilename}' nicht lesen. Fehler: ${docxError.message}]\n`);
+                }
+            }
+        }
+    } catch (e: any) {
+        console.error(`Failed to read file ${filePath}:`, e);
+        appendText(`\n\n[SYSTEM FEHLER: Datei '${originalFilename}' konnte nicht vom System gelesen werden. Fehler: ${e.message}]\n`);
+    }
 }
