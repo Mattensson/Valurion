@@ -194,53 +194,36 @@ export default function TranscribePage() {
         setError('');
 
         try {
-            // For files > 25MB, use chunked upload to bypass Server Actions size limits
-            if (file.size > 25 * 1024 * 1024) {
-                const sessionId = crypto.randomUUID();
-                const chunkSize = 5 * 1024 * 1024; // 5MB per request
-                const totalChunks = Math.ceil(file.size / chunkSize);
-                for (let i = 0; i < totalChunks; i++) {
-                    const start = i * chunkSize;
-                    const end = Math.min(start + chunkSize, file.size);
-                    const chunk = file.slice(start, end);
-                    const res = await fetch('/api/upload-chunk', {
-                        method: 'POST',
-                        headers: {
-                            'x-session-id': sessionId,
-                            'x-filename': file.name,
-                            'x-chunk-index': String(i),
-                            'x-total-chunks': String(totalChunks),
-                        },
-                        body: chunk,
-                    });
-                    if (!res.ok) throw new Error('Upload fehlgeschlagen');
-                    // only need final response
-                    if (i === totalChunks - 1) {
-                        const data = await res.json();
-                        if (!data?.success) throw new Error('Upload fehlgeschlagen');
-                        const result = await transcribeFromPath(data.finalPath, activeTab === 'record' ? 'RECORDING' : 'UPLOAD');
-                        if (result.success && result.text) {
-                            setTranscription(result.text);
-                            if (result.transcription) setSelectedTranscriptId(result.transcription.id);
-                            await loadTranscripts();
-                        } else {
-                            setError(result.error || 'Unbekannter Fehler');
-                        }
+            // Always use chunked upload to avoid Server Action body limits
+            const sessionId = crypto.randomUUID();
+            const chunkSize = 5 * 1024 * 1024; // 5MB per request
+            const totalChunks = Math.ceil(file.size / chunkSize);
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * chunkSize;
+                const end = Math.min(start + chunkSize, file.size);
+                const chunk = file.slice(start, end);
+                const res = await fetch('/api/upload-chunk', {
+                    method: 'POST',
+                    headers: {
+                        'x-session-id': sessionId,
+                        'x-filename': file.name,
+                        'x-chunk-index': String(i),
+                        'x-total-chunks': String(totalChunks),
+                    },
+                    body: chunk,
+                });
+                if (!res.ok) throw new Error('Upload fehlgeschlagen');
+                if (i === totalChunks - 1) {
+                    const data = await res.json();
+                    if (!data?.success) throw new Error('Upload fehlgeschlagen');
+                    const result = await transcribeFromPath(data.finalPath, activeTab === 'record' ? 'RECORDING' : 'UPLOAD');
+                    if (result.success && result.text) {
+                        setTranscription(result.text);
+                        if (result.transcription) setSelectedTranscriptId(result.transcription.id);
+                        await loadTranscripts();
+                    } else {
+                        setError(result.error || 'Unbekannter Fehler');
                     }
-                }
-            } else {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('source', activeTab === 'record' ? 'RECORDING' : 'UPLOAD');
-                const result = await transcribeAudio(formData);
-            if (result.success && result.text) {
-                setTranscription(result.text);
-                if (result.transcription) {
-                    setSelectedTranscriptId(result.transcription.id);
-                }
-                await loadTranscripts();
-            } else {
-                setError(result.error || 'Unbekannter Fehler');
                 }
             }
         } catch (err) {
