@@ -50,3 +50,36 @@ export async function logout() {
     const cookieStore = await cookies();
     cookieStore.delete('session');
 }
+
+/**
+ * Get user from request by validating session and fetching user from database
+ * This is a helper for API routes to get the authenticated user
+ */
+export async function getUserFromRequest(request?: Request) {
+    const session = await getSession();
+    if (!session) return null;
+
+    // Dynamically import prisma to avoid circular dependencies
+    const { prisma } = await import('@/lib/db');
+
+    const user = await prisma.user.findUnique({
+        where: { id: session.userId },
+        include: {
+            tenant: true,
+        }
+    });
+
+    if (!user) return null;
+
+    return {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        jobTitle: user.jobTitle,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        tenantId: user.tenantId,
+        tenantName: user.tenant.name,
+    };
+}

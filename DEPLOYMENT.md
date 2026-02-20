@@ -7,20 +7,24 @@ Der Agent (Antigravity) bereitet den Code vor (Commit & Push), aber führt `depl
 ### Schritte für manuelles Deployment:
 
 1.  **Code vorbereiten (Agent)**:
-    - Änderungen committen und pushen: `git push origin main`
+git add .
+git commit -m "Fix Assistant Availability"
+git push origin main
 
+   
 2.  **Deployment starten (User)**:
-    - Im Terminal (`c:\DEV\Valurion App`):
-      ```powershell
-      .\deploy.ps1
-      ```
-    - Dies aktualisiert den Code auf dem Server, kopiert `.env` und `Caddyfile`, und startet Docker neu.
+    ssh root@138.199.206.48 
+
+    cd /root/valurion
+    git pull origin main
+    
+    docker compose down && docker compose up -d --build
+
 
 3.  **Datenbank Migration (falls Schema geändert)**:
     - Wenn `prisma/schema.prisma` geändert wurde:
-      ```powershell
-      ssh root@138.199.206.48 "cd /root/valurion && docker compose exec web npx prisma db push"
-      ```
+      @root
+      docker compose exec web npx prisma db push
 
 ## Server Infos
 - **IP**: 138.199.206.48
@@ -31,3 +35,6 @@ Der Agent (Antigravity) bereitet den Code vor (Commit & Push), aber führt `depl
 ## Troubleshooting
 - **Logs ansehen**: `ssh root@138.199.206.48 "cd /root/valurion && docker compose logs -f web"`
 - **Caddy Status**: `ssh root@138.199.206.48 "cd /root/valurion && docker compose logs -f caddy"`
+
+
+## git version check

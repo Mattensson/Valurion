@@ -50,14 +50,16 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  auditLogs     AuditLog[]
-  documentsOwned Document[] @relation("DocumentOwner")
-  sharedDocuments Document[] @relation("DocumentShares")
+  auditLogs          AuditLog[]
+  documentsOwned     Document[]           @relation("DocumentOwner")
+  sharedDocuments    Document[]           @relation("DocumentShares")
   
-  chats         Chat[]
-  projects      Project[]
-  transcriptions Transcription[]
-  protocols     Protocol[]
+  chats              Chat[]
+  projects           Project[]
+  projectMemberships ProjectMember[]
+  projectFeedMessages ProjectFeedMessage[]
+  transcriptions     Transcription[]
+  protocols          Protocol[]
 }
 
 model AuditLog {
@@ -174,14 +176,20 @@ model Project {
   description String?  @db.Text
   nonGoals    String?  @db.Text
 
+  // Project Assistant
+  assistantId       String?
+  projectAssistant  ProjectAssistant?
+
   userId      String
   user        User     @relation(fields: [userId], references: [id])
 
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id])
 
-  chats       Chat[]
-  documents   Document[]
+  chats          Chat[]
+  documents      Document[]
+  members        ProjectMember[]
+  feedMessages   ProjectFeedMessage[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -277,9 +285,78 @@ model Assistant {
   sortOrder    Int     @default(0)
 
   chats        Chat[]
+  feedMessages ProjectFeedMessage[]
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
   @@index([isActive, sortOrder])
+}
+
+// Project Management Models
+
+enum ProjectRole {
+  OWNER
+  MEMBER
+}
+
+enum FeedMessageType {
+  USER
+  ASSISTANT_MENTION
+}
+
+model ProjectMember {
+  id          String      @id @default(uuid())
+  role        ProjectRole @default(MEMBER)
+  
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  
+  addedAt     DateTime    @default(now())
+  
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId])
+}
+
+model ProjectFeedMessage {
+  id          String          @id @default(uuid())
+  content     String          @db.Text
+  type        FeedMessageType @default(USER)
+  
+  // When type = ASSISTANT_MENTION
+  mentionedAssistantId String?
+  assistant            Assistant? @relation(fields: [mentionedAssistantId], references: [id])
+  
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime        @default(now())
+  
+  @@index([projectId, createdAt])
+}
+
+model ProjectAssistant {
+  id              String   @id @default(uuid())
+  name            String
+  systemPrompt    String   @db.Text
+  provider        String   // "OpenAI" or "Gemini"
+  modelId         String
+  temperature     Float    @default(0.7)
+  
+  // Metadata about AI generation
+  promptGeneratedBy String?   // Model ID of meta-AI
+  promptGeneratedAt DateTime?
+  
+  projectId       String   @unique
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

@@ -3,7 +3,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl ffmpeg
 COPY package.json package-lock.json* ./
 RUN npm install
 

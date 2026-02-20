@@ -33,6 +33,10 @@ export default function TranscribePage() {
     const [deleteModalPosition, setDeleteModalPosition] = useState({ x: 0, y: 0 });
     const [transcriptToDelete, setTranscriptToDelete] = useState<string | null>(null);
 
+    // Alert Modal State
+    const [alertOpen, setAlertOpen] = useState(false);
+    const [alertContent, setAlertContent] = useState({ title: '', message: '' });
+
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -111,8 +115,8 @@ export default function TranscribePage() {
     };
 
     const validateAndSetFile = (file: File) => {
-        if (file.size > 100 * 1024 * 1024) {
-            setError('Datei ist zu groß (Max 100MB)');
+        if (file.size > 1024 * 1024 * 1024) {
+            setError('Datei ist zu groß (Max 1GB)');
             return;
         }
         setFile(file);
@@ -134,10 +138,22 @@ export default function TranscribePage() {
             mediaRecorderRef.current.ondataavailable = (e) => {
                 if (e.data.size > 0) {
                     chunksRef.current.push(e.data);
+
+                    // Live-Check: Größe prüfen
+                    const currentSize = chunksRef.current.reduce((acc, chunk) => acc + chunk.size, 0);
+                    if (currentSize > 1020 * 1024 * 1024) { // Auto-Stop bei ~1.0GB (Sicherheitspuffer)
+                        stopRecording();
+                        setAlertContent({
+                            title: 'Aufnahme beendet',
+                            message: 'Die Aufnahme wurde automatisch beendet, da das Sicherheitslimit von ~1 GB erreicht wurde. Ihre Aufnahme wurde gespeichert.'
+                        });
+                        setAlertOpen(true);
+                    }
                 }
             };
 
-            mediaRecorderRef.current.start();
+            // Request data every 1 second for size monitoring
+            mediaRecorderRef.current.start(1000);
             setIsRecording(true);
             setRecordingTime(0);
             setError('');
@@ -157,7 +173,7 @@ export default function TranscribePage() {
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             mediaRecorderRef.current.stop();
             mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
             setIsRecording(false);
@@ -166,7 +182,7 @@ export default function TranscribePage() {
             setTimeout(() => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                 const file = new File([blob], 'recording.webm', { type: 'audio/webm' });
-                setFile(file);
+                validateAndSetFile(file);
             }, 100);
         }
     };
@@ -237,7 +253,7 @@ export default function TranscribePage() {
                     Audio Transkription
                 </h1>
                 <p style={{ color: 'hsl(var(--muted-foreground))' }}>
-                    Verwandeln Sie Sprache in Text mit OpenAI Whisper. Archiviert automatisch.
+                    Verwandeln Sie Sprache in Text, und Text in Intelligenz.
                 </p>
             </div>
 
@@ -405,7 +421,7 @@ export default function TranscribePage() {
                                     color: 'hsl(var(--muted-foreground))',
                                     marginTop: '0.25rem'
                                 }}>
-                                    Max. 100 MB
+                                    Max. 1 GB
                                 </div>
                             </div>
                         )}
@@ -804,6 +820,56 @@ export default function TranscribePage() {
                         </div>
                     </div>
                 </>
+            )}
+
+            {alertOpen && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 9999,
+                    background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div className="glass-panel" style={{
+                        padding: '2.5rem', maxWidth: '450px', width: '90%',
+                        background: '#1a1a1a', border: '1px solid #ef4444',
+                        boxShadow: '0 8px 32px rgba(239, 68, 68, 0.2)',
+                        textAlign: 'center',
+                        borderRadius: '1rem'
+                    }}>
+                        <div style={{
+                            width: '70px', height: '70px', borderRadius: '50%',
+                            background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 1.5rem auto'
+                        }}>
+                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="12" y1="8" x2="12" y2="12" />
+                                <line x1="12" y1="16" x2="12.01" y2="16" />
+                            </svg>
+                        </div>
+                        <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.75rem' }}>{alertContent.title}</h3>
+                        <p style={{ color: 'hsl(var(--muted-foreground))', marginBottom: '2rem', lineHeight: 1.6, fontSize: '1.1rem' }}>
+                            {alertContent.message}
+                        </p>
+                        <button
+                            onClick={() => setAlertOpen(false)}
+                            className="btn btn-primary"
+                            style={{
+                                width: '100%',
+                                justifyContent: 'center',
+                                background: '#ef4444',
+                                border: 'none',
+                                padding: '1rem',
+                                fontSize: '1.1rem',
+                                borderRadius: '0.5rem',
+                                cursor: 'pointer',
+                                fontWeight: 600
+                            }}
+                        >
+                            Verstanden
+                        </button>
+                    </div>
+                </div>
             )}
 
             <style jsx>{`

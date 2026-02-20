@@ -41,8 +41,8 @@ export async function transcribeAudio(formData: FormData) {
             return { success: false, error: 'Keine Datei hochgeladen' };
         }
 
-        if (file.size > 250 * 1024 * 1024) {
-            return { success: false, error: 'Datei zu groß (Max 250MB)' };
+        if (file.size > 1024 * 1024 * 1024) {
+            return { success: false, error: 'Datei zu groß (Max 1GB)' };
         }
 
         let text = '';
