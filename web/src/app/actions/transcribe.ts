@@ -3,10 +3,28 @@
 import OpenAI from 'openai';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { chunkAudioIfNeeded, cleanupAudioChunks } from '@/lib/audio-chunker';
+import { readFile } from 'fs/promises';
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
+
+/**
+ * Transcribes a single audio file or chunk
+ */
+async function transcribeSingleFile(filePath: string): Promise<string> {
+    const buffer = await readFile(filePath);
+    const file = new File([buffer], 'audio.mp3', { type: 'audio/mpeg' });
+
+    const response = await openai.audio.transcriptions.create({
+        file: file,
+        model: 'whisper-1',
+        language: 'de',
+    });
+
+    return response.text;
+}
 
 export async function transcribeAudio(formData: FormData) {
     try {
@@ -23,17 +41,50 @@ export async function transcribeAudio(formData: FormData) {
             return { success: false, error: 'Keine Datei hochgeladen' };
         }
 
-        if (file.size > 25 * 1024 * 1024) {
-            return { success: false, error: 'Datei zu groß (Max 25MB)' };
+        if (file.size > 250 * 1024 * 1024) {
+            return { success: false, error: 'Datei zu groß (Max 250MB)' };
         }
 
-        const response = await openai.audio.transcriptions.create({
-            file: file,
-            model: 'whisper-1',
-            language: 'de',
-        });
+        let text = '';
 
-        const text = response.text;
+        // Check if chunking is needed
+        const chunkResult = await chunkAudioIfNeeded(file);
+
+        if (!chunkResult.needsChunking) {
+            // Small file - direct transcription
+            const response = await openai.audio.transcriptions.create({
+                file: file,
+                model: 'whisper-1',
+                language: 'de',
+            });
+            text = response.text;
+        } else {
+            // Large file - chunk and transcribe
+            const { chunks, originalPath } = chunkResult;
+
+            if (!chunks || !originalPath) {
+                return { success: false, error: 'Chunking fehlgeschlagen' };
+            }
+
+            try {
+                console.log(`Transcribing ${chunks.length} chunks...`);
+
+                // Transcribe all chunks in parallel
+                const transcriptionPromises = chunks.map(chunk =>
+                    transcribeSingleFile(chunk.path)
+                );
+
+                const transcriptions = await Promise.all(transcriptionPromises);
+
+                // Combine all transcriptions
+                text = transcriptions.join(' ');
+
+                console.log(`Successfully transcribed ${chunks.length} chunks`);
+            } finally {
+                // Cleanup temporary files
+                await cleanupAudioChunks(chunks, originalPath);
+            }
+        }
         let title = 'Neues Transkript';
 
         // Titel generieren
