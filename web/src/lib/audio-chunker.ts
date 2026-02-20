@@ -214,3 +214,27 @@ export async function chunkAudioIfNeeded(file: File): Promise<{
 export async function cleanupAudioChunks(chunks: AudioChunk[], originalPath: string): Promise<void> {
     await cleanupChunks(chunks, originalPath);
 }
+
+/**
+ * Helper to chunk an already-stored audio file at a given path.
+ * Use when the file was uploaded in chunks to disk and we want to process it
+ * without loading the entire original into memory.
+ */
+export async function chunkAudioAtPath(filePath: string, fileSize: number): Promise<{
+    needsChunking: true;
+    chunks: AudioChunk[];
+    originalPath: string;
+    sessionId: string;
+}> {
+    await ensureTempDir();
+    const sessionId = randomUUID();
+    const { duration, bitrate } = await getAudioMetadata(filePath);
+    const chunkDuration = calculateChunkDuration(fileSize, bitrate, duration);
+    const chunks = await splitAudioFile(filePath, chunkDuration, duration, sessionId);
+    return {
+        needsChunking: true,
+        chunks,
+        originalPath: filePath,
+        sessionId,
+    };
+}
