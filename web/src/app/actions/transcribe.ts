@@ -12,17 +12,45 @@ const openai = new OpenAI({
 });
 
 /**
- * Transcribes a single audio file or chunk
+ * Transcribes a single audio file or chunk.
+ * If the file exceeds 24MB it will be re-encoded to a smaller bitrate first.
  */
 async function transcribeSingleFile(filePath: string): Promise<string> {
-    const buffer = await readFile(filePath);
-    const file = new File([buffer], 'audio.mp3', { type: 'audio/mpeg' });
+    const WHISPER_LIMIT = 24 * 1024 * 1024;
+    let actualPath = filePath;
 
+    // Safety net: if chunk is still too large, re-encode at lower bitrate
+    const fileStats = await stat(filePath);
+    if (fileStats.size > WHISPER_LIMIT) {
+        console.warn(`Chunk ${filePath} is ${fileStats.size} bytes (>${WHISPER_LIMIT}), re-encoding...`);
+        const { default: ffmpegModule } = await import('fluent-ffmpeg') as any;
+        const ffmpegCmd = ffmpegModule.default ?? ffmpegModule;
+        const reEncodedPath = filePath.replace(/(\.[^.]+)$/, '_small$1');
+        await new Promise<void>((resolve, reject) => {
+            ffmpegCmd(filePath)
+                .audioCodec('libmp3lame')
+                .audioBitrate('48k')
+                .audioChannels(1)
+                .audioFrequency(16000)
+                .output(reEncodedPath)
+                .on('end', () => resolve())
+                .on('error', (err: Error) => reject(err))
+                .run();
+        });
+        actualPath = reEncodedPath;
+    }
+
+    const stream = fs.createReadStream(actualPath);
     const response = await openai.audio.transcriptions.create({
-        file: file,
+        file: stream as any,
         model: 'whisper-1',
         language: 'de',
     });
+
+    // Clean up re-encoded file if created
+    if (actualPath !== filePath) {
+        await import('fs/promises').then(fsp => fsp.unlink(actualPath).catch(() => {}));
+    }
 
     return response.text;
 }
@@ -137,8 +165,11 @@ export async function transcribeFromPath(filePath: string, sourceRaw?: string) {
 
         let text = '';
 
-        if (fileSize <= 25 * 1024 * 1024) {
-            // Small file: stream directly without loading whole file in memory
+        // OpenAI Whisper limit is 25MB. Use 24MB threshold for safety (HTTP overhead).
+        const WHISPER_LIMIT = 24 * 1024 * 1024;
+
+        if (fileSize <= WHISPER_LIMIT) {
+            // Small file: send directly to Whisper
             const stream = fs.createReadStream(filePath);
             const response = await openai.audio.transcriptions.create({
                 file: stream as any,
@@ -147,12 +178,16 @@ export async function transcribeFromPath(filePath: string, sourceRaw?: string) {
             });
             text = response.text;
         } else {
-            // Large file: chunk by path
+            // Large file: chunk by path, then transcribe each chunk
             const { chunks, originalPath } = await chunkAudioAtPath(filePath, fileSize);
             try {
-                const transcriptionPromises = chunks.map(chunk => transcribeSingleFile(chunk.path));
-                const transcriptions = await Promise.all(transcriptionPromises);
-                text = transcriptions.join(' ');
+                // Process chunks sequentially to avoid rate limits
+                const parts: string[] = [];
+                for (const chunk of chunks) {
+                    const partText = await transcribeSingleFile(chunk.path);
+                    parts.push(partText);
+                }
+                text = parts.join(' ');
             } finally {
                 await cleanupAudioChunks(chunks, originalPath);
             }

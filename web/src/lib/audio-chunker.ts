@@ -45,7 +45,7 @@ async function configureFFmpegPaths(): Promise<void> {
     }
 }
 
-const CHUNK_SIZE_MB = 20; // Target 20MB per chunk (safe margin under 25MB limit)
+const CHUNK_SIZE_MB = 15; // Target 15MB per chunk (safe margin under OpenAI's 25MB limit)
 const TEMP_DIR = path.join(process.cwd(), 'temp', 'audio-chunks');
 
 interface AudioChunk {
@@ -124,7 +124,9 @@ async function splitAudioFile(
                 .setDuration(actualDuration)
                 .output(outputPath)
                 .audioCodec('libmp3lame')
-                .audioBitrate('128k')
+                .audioBitrate('64k')       // Conservative bitrate to stay well under 25MB
+                .audioChannels(1)           // Mono to reduce file size
+                .audioFrequency(16000)      // 16kHz is sufficient for speech/Whisper
                 .on('end', () => resolve())
                 .on('error', (err) => reject(err))
                 .run();
@@ -171,8 +173,8 @@ export async function chunkAudioIfNeeded(file: File): Promise<{
 }> {
     const fileSize = file.size;
 
-    // If file is under 25MB, no chunking needed
-    if (fileSize <= 25 * 1024 * 1024) {
+    // If file is under 24MB, no chunking needed (safety margin for OpenAI's 25MB limit)
+    if (fileSize <= 24 * 1024 * 1024) {
         return { needsChunking: false };
     }
 
