@@ -45,7 +45,7 @@ async function configureFFmpegPaths(): Promise<void> {
     }
 }
 
-const CHUNK_SIZE_MB = 15; // Target 15MB per chunk (safe margin under OpenAI's 25MB limit)
+const CHUNK_SIZE_MB = 2; // Target 2MB per chunk for faster partials
 const TEMP_DIR = path.join(process.cwd(), 'temp', 'audio-chunks');
 
 interface AudioChunk {

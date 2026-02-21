@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { transcribeAudio, transcribeFromPath, getTranscripts, deleteTranscript } from '@/app/actions/transcribe';
+import { getTranscripts, deleteTranscript } from '@/app/actions/transcribe';
 
 const renderContent = (content: string) => {
     const parts = content.split(/(\*\*.*?\*\*)/g);
@@ -20,6 +20,8 @@ export default function TranscribePage() {
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [etaMs, setEtaMs] = useState<number | null>(null);
     const [transcription, setTranscription] = useState('');
     const [error, setError] = useState('');
     const [dragActive, setDragActive] = useState(false);
@@ -42,6 +44,65 @@ export default function TranscribePage() {
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
+    const esRef = useRef<EventSource | null>(null);
+    const startTimeRef = useRef<number>(0);
+    const linearTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const predictedTotalMsRef = useRef<number>(0);
+
+    // --- Estimation helpers ---
+    const loadCalibration = (ext: string) => {
+        try {
+            const raw = localStorage.getItem('valurion_transcribe_calibration_v1');
+            const obj = raw ? JSON.parse(raw) : {};
+            return obj[ext]?.bias ?? 1.0;
+        } catch { return 1.0; }
+    };
+
+    const saveCalibration = (ext: string, predictedMs: number, actualMs: number) => {
+        try {
+            const raw = localStorage.getItem('valurion_transcribe_calibration_v1');
+            const obj = raw ? JSON.parse(raw) : {};
+            const old = obj[ext]?.bias ?? 1.0;
+            const ratio = actualMs / Math.max(1, predictedMs);
+            const alpha = 0.3; // learning rate
+            const updated = old * (1 - alpha) + ratio * alpha;
+            obj[ext] = { bias: Math.min(2.5, Math.max(0.4, updated)) };
+            localStorage.setItem('valurion_transcribe_calibration_v1', JSON.stringify(obj));
+        } catch { /* ignore */ }
+    };
+
+    const guessBitrate = (ext: string) => {
+        const e = ext.toLowerCase();
+        if (['.mp3', '.m4a', '.aac', '.ogg', '.opus'].includes(e)) return 64000; // 64 kbps speech
+        if (['.webm'].includes(e)) return 48000; // 48 kbps typical
+        if (['.wav', '.wave'].includes(e)) return 256000; // conservative for PCM speech
+        return 128000; // default guess
+    };
+
+    const getBrowserDuration = async (blob: Blob): Promise<number | null> => {
+        try {
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio();
+            audio.preload = 'metadata';
+            const duration = await new Promise<number>((resolve, reject) => {
+                const cleanup = () => { URL.revokeObjectURL(url); };
+                const onLoaded = () => { cleanup(); resolve(isFinite(audio.duration) ? audio.duration : NaN); };
+                const onError = () => { cleanup(); reject(new Error('metadata load failed')); };
+                audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+                audio.addEventListener('error', onError, { once: true });
+                audio.src = url;
+            });
+            if (!isNaN(duration) && duration > 0) return duration;
+            return null;
+        } catch { return null; }
+    };
+
+    const formatEta = (ms: number) => {
+        const totalSec = Math.ceil(ms / 1000);
+        const m = Math.floor(totalSec / 60);
+        const s = totalSec % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
 
     const handleCreateProtocol = () => {
         if (!transcription) return;
@@ -64,6 +125,8 @@ export default function TranscribePage() {
         loadTranscripts();
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
+            if (esRef.current) { try { esRef.current.close(); } catch {} }
+            if (linearTimerRef.current) clearInterval(linearTimerRef.current);
         };
     }, []);
 
@@ -191,13 +254,40 @@ export default function TranscribePage() {
         if (!file) return;
 
         setIsProcessing(true);
+        setProgress(0);
         setError('');
+        setEtaMs(null);
 
         try {
             // Always use chunked upload to avoid Server Action body limits
             const sessionId = crypto.randomUUID();
-            const chunkSize = 5 * 1024 * 1024; // 5MB per request
+            const chunkSize = 2 * 1024 * 1024; // 2MB per request (faster first results)
             const totalChunks = Math.ceil(file.size / chunkSize);
+
+            // Initial ETA based on browser-reported duration if possible, else size/type
+            const ext = (file.name.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
+            let estimatedAudioSec = await getBrowserDuration(file);
+            if (!estimatedAudioSec) {
+                const bitrate = guessBitrate(ext); // bits/sec
+                estimatedAudioSec = (file.size * 8) / Math.max(1, bitrate);
+            }
+            const baseMultiplier = 0.35; // typical processing speed vs audio length
+            const overheadMs = 5_000; // baseline overhead for upload/latency
+            const bias = loadCalibration(ext);
+            const predictedTotalMs = Math.max(8_000, Math.round((estimatedAudioSec * baseMultiplier) * 1000 * bias + overheadMs));
+            predictedTotalMsRef.current = predictedTotalMs;
+            startTimeRef.current = Date.now();
+            setEtaMs(predictedTotalMs);
+
+            // Start linear progress that updates based on predicted time
+            if (linearTimerRef.current) clearInterval(linearTimerRef.current);
+            linearTimerRef.current = setInterval(() => {
+                const elapsed = Date.now() - startTimeRef.current;
+                const pct = Math.min(99, Math.floor((elapsed / Math.max(1, predictedTotalMsRef.current)) * 100));
+                setProgress(pct);
+                const remaining = Math.max(0, predictedTotalMsRef.current - elapsed);
+                setEtaMs(remaining);
+            }, 250);
             for (let i = 0; i < totalChunks; i++) {
                 const start = i * chunkSize;
                 const end = Math.min(start + chunkSize, file.size);
@@ -213,23 +303,67 @@ export default function TranscribePage() {
                     body: chunk,
                 });
                 if (!res.ok) throw new Error('Upload fehlgeschlagen');
-                if (i === totalChunks - 1) {
+                    if (i === totalChunks - 1) {
                     const data = await res.json();
                     if (!data?.success) throw new Error('Upload fehlgeschlagen');
-                    const result = await transcribeFromPath(data.finalPath, activeTab === 'record' ? 'RECORDING' : 'UPLOAD');
-                    if (result.success && result.text) {
-                        setTranscription(result.text);
-                        if (result.transcription) setSelectedTranscriptId(result.transcription.id);
-                        await loadTranscripts();
-                    } else {
-                        setError(result.error || 'Unbekannter Fehler');
-                    }
+                    // Start SSE streaming transcription
+                    const url = `/api/transcribe-stream?path=${encodeURIComponent(data.finalPath)}&source=${activeTab === 'record' ? 'RECORDING' : 'UPLOAD'}`;
+                    const es = new EventSource(url);
+                    esRef.current = es;
+
+                    es.addEventListener('progress', (ev: MessageEvent) => {
+                        try {
+                            const d = JSON.parse(ev.data);
+                            // Recompute predicted total using observed pace per chunk
+                            if (typeof d.completedChunks === 'number' && typeof d.totalChunks === 'number' && d.totalChunks > 0) {
+                                const elapsed = Date.now() - startTimeRef.current;
+                                const frac = Math.max(0.01, d.completedChunks / d.totalChunks);
+                                const newPredTotal = Math.max(elapsed + 5000, Math.round(elapsed / frac));
+                                predictedTotalMsRef.current = newPredTotal;
+                                const remaining = Math.max(0, newPredTotal - elapsed);
+                                setEtaMs(remaining);
+                            }
+                        } catch {}
+                    });
+                    es.addEventListener('partial', (ev: MessageEvent) => {
+                        try { const d = JSON.parse(ev.data); if (typeof d.aggregateText === 'string') setTranscription(d.aggregateText); } catch {}
+                    });
+                    es.addEventListener('done', (ev: MessageEvent) => {
+                        try {
+                            const d = JSON.parse(ev.data);
+                            setProgress(100);
+                            setIsProcessing(false);
+                            setTranscription(d.text || '');
+                            const item = { id: d.transcriptionId, title: d.title || 'Neues Transkript', text: d.text || '', createdAt: new Date().toISOString(), source: activeTab === 'record' ? 'RECORDING' : 'UPLOAD' } as any;
+                            if (item.id) setSelectedTranscriptId(item.id);
+                            setTranscripts(prev => [item, ...prev.filter(t => t.id !== item.id)]);
+                            loadTranscripts();
+                            // Learn from actual time
+                            const actual = Date.now() - startTimeRef.current;
+                            const ext = (file.name.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
+                            saveCalibration(ext, predictedTotalMsRef.current, actual);
+                        } catch (e) { /* ignore */ }
+                        try { es.close(); } catch {}
+                        if (linearTimerRef.current) clearInterval(linearTimerRef.current);
+                        setEtaMs(0);
+                    });
+                    es.addEventListener('error', (ev: any) => {
+                        try {
+                            // Some browsers pass MessageEvent, some a generic Event on network errors
+                            const data = (ev as MessageEvent).data ? JSON.parse((ev as MessageEvent).data) : null;
+                            setError((data && data.message) || 'Transkription fehlgeschlagen');
+                        } catch { setError('Transkription fehlgeschlagen'); }
+                        setIsProcessing(false);
+                        try { es.close(); } catch {}
+                        if (linearTimerRef.current) clearInterval(linearTimerRef.current);
+                    });
                 }
             }
         } catch (err) {
             setError('Verbindungsfehler zum Server');
-        } finally {
             setIsProcessing(false);
+        } finally {
+            // isProcessing wird in SSE-Done/Error zurückgesetzt
         }
     };
 
@@ -642,13 +776,33 @@ export default function TranscribePage() {
                                     <button onClick={() => { setFile(null); setTranscription(''); setError(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--muted-foreground))' }}>✕</button>
                                 </div>
                                 <button
-                                    className="btn btn-primary"
+                                    className="btn"
                                     onClick={handleTranscribe}
                                     disabled={isProcessing}
-                                    style={{ width: '100%', justifyContent: 'center' }}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'center',
+                                        position: 'relative',
+                                        overflow: 'hidden',
+                                        background: isProcessing ? '#f59e0b' : '#01b4d8',
+                                        border: 'none',
+                                        borderRadius: '0.75rem',
+                                        color: 'white',
+                                        fontWeight: 700
+                                    }}
                                 >
-                                    {isProcessing ? 'Verarbeite...' : 'Transkribieren'}
+                                    {isProcessing && (
+                                        <span style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.15)', width: `${progress}%`, height: '100%', pointerEvents: 'none', transition: 'width 0.2s ease' }} />
+                                    )}
+                                    <span style={{ position: 'relative' }}>
+                                        {isProcessing ? `In Progress – ${progress}%` : 'Transkribieren'}
+                                    </span>
                                 </button>
+                                {isProcessing && etaMs !== null && (
+                                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'hsl(var(--muted-foreground))' }}>
+                                        Voraussichtliche Restdauer: ~{formatEta(etaMs)}
+                                    </div>
+                                )}
                             </div>
                         )}
 
